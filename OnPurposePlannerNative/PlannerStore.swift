@@ -144,7 +144,6 @@ class PlannerStore: ObservableObject {
     }
 
     func goToPreviousWeek() {
-        let cal = generateCalendar(year: currentYear, month: currentMonth)
         if currentWeekIndex > 0 {
             currentWeekIndex -= 1
         } else {
