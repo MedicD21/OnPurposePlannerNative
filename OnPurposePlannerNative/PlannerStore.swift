@@ -12,6 +12,7 @@ enum PaperSide: String {
     case right = "right"
 }
 
+@MainActor
 class PlannerStore: ObservableObject {
     @Published var currentYear:      Int
     @Published var currentMonth:     Int
@@ -35,8 +36,22 @@ class PlannerStore: ObservableObject {
     // MARK: - Sticky Notes
     @Published var stickyNotes: [StickyNote] = []
 
+    // MARK: - Tab Markers
+    @Published var tabMarkers: [TabMarker] = []
+
     // MARK: - Attachments
     @Published var attachments: [PageAttachment] = []
+
+    // MARK: - Calendar
+    let calendarManager = EventKitManager()
+    @Published var enabledCalendarIDs: Set<String> = {
+        let saved = UserDefaults.standard.stringArray(forKey: "enabledCalendarIDs") ?? []
+        return Set(saved)
+    }() {
+        didSet {
+            UserDefaults.standard.set(Array(enabledCalendarIDs), forKey: "enabledCalendarIDs")
+        }
+    }
 
     // MARK: - Init
 
@@ -62,6 +77,7 @@ class PlannerStore: ObservableObject {
         )
 
         loadStickyNotes()
+        loadTabMarkers()
         loadAttachments()
     }
 
@@ -223,6 +239,53 @@ class PlannerStore: ObservableObject {
         saveStickyNotes()
     }
 
+    // MARK: - Tab Markers Persistence
+
+    private var tabMarkersURL: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return docs.appendingPathComponent("tab-markers.json")
+    }
+
+    func loadTabMarkers() {
+        guard let data = try? Data(contentsOf: tabMarkersURL),
+              let items = try? JSONDecoder().decode([TabMarker].self, from: data)
+        else { return }
+        tabMarkers = items
+    }
+
+    private func saveTabMarkers() {
+        guard let data = try? JSONEncoder().encode(tabMarkers) else { return }
+        try? data.write(to: tabMarkersURL, options: .atomic)
+    }
+
+    func addTabMarker(spreadId: String) {
+        let count  = tabMarkers.filter { $0.pageId == spreadId }.count
+        let offset = CGFloat(count) * 28
+        let x = min(200 + offset, PlannerTheme.spreadWidth  - TabMarker.width  - 20)
+        let y = min(200 + offset, PlannerTheme.spreadHeight - TabMarker.height - 20)
+        let colors = TabColor.allCases
+        let color  = colors[count % colors.count]
+        let marker = TabMarker(pageId: spreadId, x: x, y: y, colorKey: color)
+        tabMarkers.append(marker)
+        saveTabMarkers()
+    }
+
+    func mutateTabMarker(id: UUID, transform: (inout TabMarker) -> Void) {
+        guard let idx = tabMarkers.firstIndex(where: { $0.id == id }) else { return }
+        transform(&tabMarkers[idx])
+        saveTabMarkers()
+    }
+
+    func deleteTabMarker(id: UUID) {
+        guard let marker = tabMarkers.first(where: { $0.id == id }) else { return }
+        let pid = marker.drawingPageId
+        drawingsCache.removeValue(forKey: pid)
+        let url = drawingsDirectory.appendingPathComponent("\(pid).drawing")
+        try? FileManager.default.removeItem(at: url)
+        tabMarkers.removeAll { $0.id == id }
+        saveTabMarkers()
+    }
+
     // MARK: - Fill Mode
 
     @Published var fillModeActive = false
@@ -289,6 +352,7 @@ class PlannerStore: ObservableObject {
     struct PlannerExportData: Codable {
         var exportDate: Date
         var stickyNotes: [StickyNote]
+        var tabMarkers:  [TabMarker]
         var attachments: [PageAttachment]
         var drawings: [String: Data]   // pageId → PKDrawing.dataRepresentation()
         var fills: [String: Data]?     // pageId → fill image PNG (optional for backwards compat)
@@ -321,6 +385,7 @@ class PlannerStore: ObservableObject {
         let export = PlannerExportData(
             exportDate: Date(),
             stickyNotes: stickyNotes,
+            tabMarkers:  tabMarkers,
             attachments: attachments,
             drawings: drawingMap,
             fills: fillMap
@@ -359,9 +424,11 @@ class PlannerStore: ObservableObject {
             }
         }
 
-        // Restore sticky notes and attachments
+        // Restore sticky notes, tab markers, and attachments
         stickyNotes = export.stickyNotes
         saveStickyNotes()
+        tabMarkers = export.tabMarkers
+        saveTabMarkers()
         attachments = export.attachments
         saveAttachments()
     }

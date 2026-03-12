@@ -76,6 +76,11 @@ struct FloatingToolbarView: View {
                     store.addStickyNote(spreadId: store.currentSpreadId)
                 }
 
+                // Add tab marker
+                iconButton(systemImage: "bookmark.fill", help: "Add tab marker") {
+                    store.addTabMarker(spreadId: store.currentSpreadId)
+                }
+
                 // Attach photo
                 iconButton(systemImage: "photo.badge.plus", help: "Attach photo") {
                     showImagePicker = true

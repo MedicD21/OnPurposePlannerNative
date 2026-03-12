@@ -48,5 +48,7 @@ targets:
         UILaunchScreen:
           UIColorName: ""
         NSPhotoLibraryUsageDescription: "Used to attach photos to planner pages."
+        NSCalendarsUsageDescription: "Used to display your calendar events on planner pages."
+        NSCalendarsFullAccessUsageDescription: "Used to display your calendar events on planner pages."
     scheme:
       testTargets: []

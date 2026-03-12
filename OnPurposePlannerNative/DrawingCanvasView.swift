@@ -1,9 +1,22 @@
 import SwiftUI
 import PencilKit
 
+/// Describes the month-calendar grid so the paint-bucket fill can be
+/// restricted to a single day cell.  Nil on non-month canvases.
+struct MonthFillGrid {
+    let originX:   CGFloat   // left edge of the grid (= horizontal padding)
+    let originY:   CGFloat   // top edge of the first row
+    let cellWidth: CGFloat
+    let cellHeight: CGFloat
+    let columns: Int = 7
+    let rows:    Int = 6
+}
+
 struct DrawingCanvasView: UIViewRepresentable {
     var pageId: String
     @ObservedObject var store: PlannerStore
+    /// When non-nil, fill is enabled and clamped to the tapped day cell.
+    var monthGrid: MonthFillGrid? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(pageId: pageId, store: store)
@@ -24,7 +37,7 @@ struct DrawingCanvasView: UIViewRepresentable {
         // PencilKit canvas on top
         let canvas = PKCanvasView()
         canvas.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        canvas.drawingPolicy    = .pencilOnly   // OS palm rejection; fingers pan/zoom
+        canvas.drawingPolicy    = .pencilOnly
         canvas.isScrollEnabled  = false
         canvas.backgroundColor  = .clear
         canvas.isOpaque         = false
@@ -32,8 +45,9 @@ struct DrawingCanvasView: UIViewRepresentable {
         canvas.delegate         = context.coordinator
         container.addSubview(canvas)
 
-        context.coordinator.canvas   = canvas
-        context.coordinator.fillView = fillView
+        context.coordinator.canvas    = canvas
+        context.coordinator.fillView  = fillView
+        context.coordinator.monthGrid = monthGrid
 
         fillView.image = store.fillImage(forPageId: pageId)
 
@@ -41,19 +55,22 @@ struct DrawingCanvasView: UIViewRepresentable {
         store.toolPicker.addObserver(canvas)
         DispatchQueue.main.async { canvas.becomeFirstResponder() }
 
-        // Tap gesture for paint-bucket fill (finger taps; Pencil goes to drawing engine)
-        let tap = UITapGestureRecognizer(
-            target: context.coordinator,
-            action: #selector(Coordinator.handleFillTap(_:)))
-        tap.delegate = context.coordinator
-        canvas.addGestureRecognizer(tap)
+        // Tap gesture for paint-bucket fill — only registered when a grid is provided
+        if monthGrid != nil {
+            let tap = UITapGestureRecognizer(
+                target: context.coordinator,
+                action: #selector(Coordinator.handleFillTap(_:)))
+            tap.delegate = context.coordinator
+            canvas.addGestureRecognizer(tap)
+        }
 
         return container
     }
 
     func updateUIView(_ container: UIView, context: Context) {
         guard context.coordinator.pageId != pageId else { return }
-        context.coordinator.pageId = pageId
+        context.coordinator.pageId    = pageId
+        context.coordinator.monthGrid = monthGrid
         if let canvas = context.coordinator.canvas {
             canvas.drawing = store.drawing(forPageId: pageId)
             store.toolPicker.setVisible(true, forFirstResponder: canvas)
@@ -66,8 +83,9 @@ struct DrawingCanvasView: UIViewRepresentable {
     // MARK: - Coordinator
 
     class Coordinator: NSObject, PKCanvasViewDelegate, UIGestureRecognizerDelegate {
-        var pageId: String
-        var store:  PlannerStore
+        var pageId:    String
+        var store:     PlannerStore
+        var monthGrid: MonthFillGrid?
         weak var canvas:   PKCanvasView?
         weak var fillView: UIImageView?
 
@@ -110,9 +128,21 @@ struct DrawingCanvasView: UIViewRepresentable {
             guard store.fillModeActive,
                   recognizer.state == .ended,
                   let canvas   = canvas,
-                  let fillView = fillView else { return }
+                  let fillView = fillView,
+                  let grid     = monthGrid else { return }
 
             let location = recognizer.location(in: canvas)
+
+            // Determine which day cell was tapped and clamp fill to it
+            let col = Int((location.x - grid.originX) / grid.cellWidth)
+            let row = Int((location.y - grid.originY) / grid.cellHeight)
+            guard col >= 0, col < grid.columns, row >= 0, row < grid.rows else { return }
+            let cellRect = CGRect(
+                x: grid.originX + CGFloat(col) * grid.cellWidth,
+                y: grid.originY + CGFloat(row) * grid.cellHeight,
+                width:  grid.cellWidth,
+                height: grid.cellHeight)
+
             let drawing  = canvas.drawing
             let existing = fillView.image
             let size     = canvas.bounds.size
@@ -132,7 +162,8 @@ struct DrawingCanvasView: UIViewRepresentable {
                     existingFill: existing,
                     canvasSize: size,
                     at: location,
-                    color: fillColor)
+                    color: fillColor,
+                    clampRect: cellRect)
                 DispatchQueue.main.async {
                     guard let result else { return }
                     fillView.image = result
@@ -154,7 +185,8 @@ struct DrawingCanvasView: UIViewRepresentable {
             existingFill: UIImage?,
             canvasSize: CGSize,
             at point: CGPoint,
-            color: UIColor
+            color: UIColor,
+            clampRect: CGRect
         ) -> UIImage? {
             let scale = UIScreen.main.scale
             let w  = Int(canvasSize.width  * scale)
@@ -164,6 +196,14 @@ struct DrawingCanvasView: UIViewRepresentable {
             guard w > 0, h > 0,
                   px >= 0, px < w,
                   py >= 0, py < h else { return nil }
+
+            // Pixel bounds of the day cell — BFS is clamped to this region
+            let clampX0 = max(0, Int(clampRect.minX * scale))
+            let clampY0 = max(0, Int(clampRect.minY * scale))
+            let clampX1 = min(w - 1, Int(ceil(clampRect.maxX * scale)))
+            let clampY1 = min(h - 1, Int(ceil(clampRect.maxY * scale)))
+            guard px >= clampX0, px <= clampX1,
+                  py >= clampY0, py <= clampY1 else { return nil }
 
             let bpp = 4
             let bpr = w * bpp
@@ -203,10 +243,10 @@ struct DrawingCanvasView: UIViewRepresentable {
             let fG = UInt8(g * a * 255)
             let fB = UInt8(b * a * 255)
 
-            // BFS flood fill — stop at stroke pixels (alpha > 20 in detectPx)
+            // BFS flood fill — stop at stroke pixels or cell boundary
             var visited = [Bool](repeating: false, count: w * h)
             var queue   = [(Int, Int)]()
-            queue.reserveCapacity(min(w * h / 8, 512_000))
+            queue.reserveCapacity(min((clampX1 - clampX0) * (clampY1 - clampY0), 256_000))
             queue.append((px, py))
             visited[py * w + px] = true
             var qi = 0
@@ -220,7 +260,9 @@ struct DrawingCanvasView: UIViewRepresentable {
                 outputPx[oi+3] = fA
 
                 for (nx, ny) in [(x-1,y),(x+1,y),(x,y-1),(x,y+1)] {
-                    guard nx >= 0, nx < w, ny >= 0, ny < h else { continue }
+                    // Hard-clamp to the day cell rect
+                    guard nx >= clampX0, nx <= clampX1,
+                          ny >= clampY0, ny <= clampY1 else { continue }
                     let ni = ny * w + nx
                     guard !visited[ni] else { continue }
                     visited[ni] = true

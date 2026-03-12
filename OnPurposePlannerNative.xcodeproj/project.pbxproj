@@ -17,8 +17,10 @@
 		4BCB4B002360998B80712CE3 /* DrawingCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9601B2AC67C368D40BE4DE07 /* DrawingCanvasView.swift */; };
 		6C0843BD1C15FBB34AA465A1 /* OnPurposePlannerNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE1CB0CAEFE8E6DBA1542C3 /* OnPurposePlannerNativeApp.swift */; };
 		6F05343DC9F30D7A6D5A5C77 /* StickyNoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C405AC7D319343F790689D17 /* StickyNoteView.swift */; };
+		7F97BD872A89F2C22692F08E /* EventKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F6AA3B2A518B419432B903 /* EventKitManager.swift */; };
 		8F6CDD3A3EF071D5A7E3281B /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6D9A4155B8A8263C93289B2 /* AppSettings.swift */; };
 		99EA89586B28B988C34137C8 /* AttachmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 083676C8EDE6452083990425 /* AttachmentView.swift */; };
+		9DF909BF691A46347ACFE7A0 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A06B1278DCEE3498BD46BB1 /* OnboardingView.swift */; };
 		A47504F91C02CB0CF075AC9E /* DocumentPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 388C9BF19F3A4736400A3A10 /* DocumentPickerView.swift */; };
 		AB80B6F7D54608B0F6128E97 /* PlannerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5193B25138C1A21EA64D6FF8 /* PlannerStore.swift */; };
 		BD9797EC236BA81F226D7595 /* PlanningSpreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27C2DB878CF3960933EFBA2A /* PlanningSpreadView.swift */; };
@@ -27,9 +29,11 @@
 		DEB584EA309225E2AF0583AC /* PageAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6BA5C5B30F4729A4CB28873 /* PageAttachment.swift */; };
 		E2EC2FC67D9CEDA0FDA1E023 /* WeekPaperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17DA413ABC7836AAB7FDD6D3 /* WeekPaperView.swift */; };
 		F1F3335C32C9240AC92D7DFA /* PlannerTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E927ADFB66CFE906C92FCAC3 /* PlannerTheme.swift */; };
+		F3481135B319CEFFB70071E3 /* TabMarkerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 719EE2029033912BBD8627B9 /* TabMarkerView.swift */; };
 		F439BCB3A4CE74222C403EE4 /* ZoomableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C54590027297ABE3CF621040 /* ZoomableView.swift */; };
 		FA329803AC57957B2B744720 /* FloatingToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F50FB424A0F58FA2FA6D14 /* FloatingToolbarView.swift */; };
 		FC14A00B8DD16D4C2D42F32A /* PlannerSpreadContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CC53FF4196B4BA013971F8E /* PlannerSpreadContainerView.swift */; };
+		FC6A91BB226497D25689A735 /* TabMarker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D341626EB0C16ABB857657ED /* TabMarker.swift */; };
 		FE1011409AB776A3A8D120C7 /* CalendarData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B4559D4231F028AB94193F /* CalendarData.swift */; };
 /* End PBXBuildFile section */
 
@@ -47,6 +51,8 @@
 		4CC53FF4196B4BA013971F8E /* PlannerSpreadContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSpreadContainerView.swift; sourceTree = "<group>"; };
 		5193B25138C1A21EA64D6FF8 /* PlannerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerStore.swift; sourceTree = "<group>"; };
 		69B4559D4231F028AB94193F /* CalendarData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarData.swift; sourceTree = "<group>"; };
+		719EE2029033912BBD8627B9 /* TabMarkerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabMarkerView.swift; sourceTree = "<group>"; };
+		7A06B1278DCEE3498BD46BB1 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		7DF5341F0B7E32423EF2293A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		8CBF90BEDFA13DC9EB04D115 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		9601B2AC67C368D40BE4DE07 /* DrawingCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawingCanvasView.swift; sourceTree = "<group>"; };
@@ -55,8 +61,11 @@
 		C20D09233E206A5E4D9EEECF /* ShapeRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShapeRecognizer.swift; sourceTree = "<group>"; };
 		C405AC7D319343F790689D17 /* StickyNoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StickyNoteView.swift; sourceTree = "<group>"; };
 		C54590027297ABE3CF621040 /* ZoomableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomableView.swift; sourceTree = "<group>"; };
+		C8A29DC16C5767EB546AA5C4 /* OnPurposePlannerNative.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OnPurposePlannerNative.entitlements; sourceTree = "<group>"; };
+		D341626EB0C16ABB857657ED /* TabMarker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabMarker.swift; sourceTree = "<group>"; };
 		D6BA5C5B30F4729A4CB28873 /* PageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageAttachment.swift; sourceTree = "<group>"; };
 		E2F50FB424A0F58FA2FA6D14 /* FloatingToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingToolbarView.swift; sourceTree = "<group>"; };
+		E8F6AA3B2A518B419432B903 /* EventKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitManager.swift; sourceTree = "<group>"; };
 		E927ADFB66CFE906C92FCAC3 /* PlannerTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerTheme.swift; sourceTree = "<group>"; };
 		F14ABDC7EF63B3DE1F73BC7F /* MonthTabsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthTabsView.swift; sourceTree = "<group>"; };
 		F643AF9044F839E75030FB95 /* MonthPaperView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthPaperView.swift; sourceTree = "<group>"; };
@@ -73,12 +82,15 @@
 				7DF5341F0B7E32423EF2293A /* ContentView.swift */,
 				388C9BF19F3A4736400A3A10 /* DocumentPickerView.swift */,
 				9601B2AC67C368D40BE4DE07 /* DrawingCanvasView.swift */,
+				E8F6AA3B2A518B419432B903 /* EventKitManager.swift */,
 				E2F50FB424A0F58FA2FA6D14 /* FloatingToolbarView.swift */,
 				0D2C411DE53147752980454E /* ImagePickerView.swift */,
 				361B3B6F5C4A218810D7FC0A /* Info.plist */,
 				F643AF9044F839E75030FB95 /* MonthPaperView.swift */,
 				F14ABDC7EF63B3DE1F73BC7F /* MonthTabsView.swift */,
 				25B8AD5AFA595B224DBDED5B /* NotesSpreadView.swift */,
+				7A06B1278DCEE3498BD46BB1 /* OnboardingView.swift */,
+				C8A29DC16C5767EB546AA5C4 /* OnPurposePlannerNative.entitlements */,
 				3DE1CB0CAEFE8E6DBA1542C3 /* OnPurposePlannerNativeApp.swift */,
 				D6BA5C5B30F4729A4CB28873 /* PageAttachment.swift */,
 				4CC53FF4196B4BA013971F8E /* PlannerSpreadContainerView.swift */,
@@ -89,6 +101,8 @@
 				C20D09233E206A5E4D9EEECF /* ShapeRecognizer.swift */,
 				97BE124CD5F3C3BF7CB6FBD5 /* StickyNote.swift */,
 				C405AC7D319343F790689D17 /* StickyNoteView.swift */,
+				D341626EB0C16ABB857657ED /* TabMarker.swift */,
+				719EE2029033912BBD8627B9 /* TabMarkerView.swift */,
 				17DA413ABC7836AAB7FDD6D3 /* WeekPaperView.swift */,
 				C54590027297ABE3CF621040 /* ZoomableView.swift */,
 			);
@@ -139,7 +153,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2630;
+				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					1050EC86B51C4C17A7413EB7 = {
 						ProvisioningStyle = Automatic;
@@ -186,12 +200,14 @@
 				259042F2071BDA3E2B99F3F0 /* ContentView.swift in Sources */,
 				A47504F91C02CB0CF075AC9E /* DocumentPickerView.swift in Sources */,
 				4BCB4B002360998B80712CE3 /* DrawingCanvasView.swift in Sources */,
+				7F97BD872A89F2C22692F08E /* EventKitManager.swift in Sources */,
 				FA329803AC57957B2B744720 /* FloatingToolbarView.swift in Sources */,
 				1525B768AFB0CC81C413EC18 /* ImagePickerView.swift in Sources */,
 				DE8292428E95914B8CBB59F9 /* MonthPaperView.swift in Sources */,
 				2FC9FD2CE02EE5C2EE3CC012 /* MonthTabsView.swift in Sources */,
 				1899417228077D67512F2336 /* NotesSpreadView.swift in Sources */,
 				6C0843BD1C15FBB34AA465A1 /* OnPurposePlannerNativeApp.swift in Sources */,
+				9DF909BF691A46347ACFE7A0 /* OnboardingView.swift in Sources */,
 				DEB584EA309225E2AF0583AC /* PageAttachment.swift in Sources */,
 				FC14A00B8DD16D4C2D42F32A /* PlannerSpreadContainerView.swift in Sources */,
 				AB80B6F7D54608B0F6128E97 /* PlannerStore.swift in Sources */,
@@ -201,6 +217,8 @@
 				2AC2A573293BE8CADFA633A1 /* ShapeRecognizer.swift in Sources */,
 				302BCD862732C9C7CEE48E89 /* StickyNote.swift in Sources */,
 				6F05343DC9F30D7A6D5A5C77 /* StickyNoteView.swift in Sources */,
+				FC6A91BB226497D25689A735 /* TabMarker.swift in Sources */,
+				F3481135B319CEFFB70071E3 /* TabMarkerView.swift in Sources */,
 				E2EC2FC67D9CEDA0FDA1E023 /* WeekPaperView.swift in Sources */,
 				F439BCB3A4CE74222C403EE4 /* ZoomableView.swift in Sources */,
 			);
@@ -213,7 +231,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -245,10 +262,8 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 286LKF859M;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -262,7 +277,6 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -276,8 +290,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 286LKF859M;
 				INFOPLIST_FILE = OnPurposePlannerNative/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -296,8 +312,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 286LKF859M;
 				INFOPLIST_FILE = OnPurposePlannerNative/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -316,7 +334,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -348,10 +365,8 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 286LKF859M;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -372,7 +387,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;

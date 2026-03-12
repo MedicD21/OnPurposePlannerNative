@@ -156,6 +156,15 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
         context.coordinator.noteDragRecognizer = noteDrag
         scrollView.panGestureRecognizer.require(toFail: noteDrag)
 
+        // One-finger pan for tab marker dragging.
+        let tabDrag = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTabDrag(_:)))
+        tabDrag.minimumNumberOfTouches = 1
+        tabDrag.maximumNumberOfTouches = 1
+        tabDrag.delegate = context.coordinator
+        scrollView.addGestureRecognizer(tabDrag)
+        context.coordinator.tabDragRecognizer = tabDrag
+        scrollView.panGestureRecognizer.require(toFail: tabDrag)
+
         // One-finger pan for attachment move + resize (same pattern as noteDrag).
         let attachmentDrag = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleAttachmentGesture(_:)))
         attachmentDrag.minimumNumberOfTouches = 1
@@ -180,12 +189,18 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
         var hostingController:      UIHostingController<SpreadHostView>?
         weak var navPanRecognizer:   UIPanGestureRecognizer?   // 2-finger nav pan
         weak var noteDragRecognizer: UIPanGestureRecognizer?  // 1-finger note drag
+        weak var tabDragRecognizer:    UIPanGestureRecognizer? // 1-finger tab marker drag
         weak var attachmentRecognizer: UIPanGestureRecognizer? // 1-finger attachment move/resize
 
         // Note drag state
         private var draggingNoteId:      UUID?
         private var noteDragStartLoc:    CGPoint = .zero
         private var noteDragStartOrigin: CGPoint = .zero
+
+        // Tab drag state
+        private var draggingTabId:      UUID?
+        private var tabDragStartLoc:    CGPoint = .zero
+        private var tabDragStartOrigin: CGPoint = .zero
 
         // Attachment drag/resize state
         private var draggingAttachmentId: UUID?
@@ -297,6 +312,43 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
             }
         }
 
+        // MARK: - Tab marker drag
+
+        @objc func handleTabDrag(_ recognizer: UIPanGestureRecognizer) {
+            guard let scrollView  = scrollView,
+                  let contentView = hostingController?.view else { return }
+
+            switch recognizer.state {
+            case .began:
+                let loc = scrollView.convert(recognizer.location(in: scrollView), to: contentView)
+                for tab in store.tabMarkers where tab.pageId == store.currentSpreadId {
+                    let frame = CGRect(x: tab.x, y: tab.y, width: TabMarker.width, height: TabMarker.height)
+                    if frame.contains(loc) {
+                        draggingTabId      = tab.id
+                        tabDragStartLoc    = loc
+                        tabDragStartOrigin = CGPoint(x: tab.x, y: tab.y)
+                        break
+                    }
+                }
+                if draggingTabId == nil { recognizer.state = .cancelled }
+
+            case .changed:
+                guard let id = draggingTabId else { return }
+                let loc = scrollView.convert(recognizer.location(in: scrollView), to: contentView)
+                let dx  = loc.x - tabDragStartLoc.x
+                let dy  = loc.y - tabDragStartLoc.y
+                store.mutateTabMarker(id: id) {
+                    $0.x = self.tabDragStartOrigin.x + dx
+                    $0.y = self.tabDragStartOrigin.y + dy
+                }
+
+            case .ended, .cancelled, .failed:
+                draggingTabId = nil
+
+            default: break
+            }
+        }
+
         // MARK: - Attachment move / resize (UIKit-level so it beats the scroll-view pan)
 
         @objc func handleAttachmentGesture(_ recognizer: UIPanGestureRecognizer) {
@@ -366,6 +418,15 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
                     }
             }
 
+            if gestureRecognizer === tabDragRecognizer {
+                return store.tabMarkers
+                    .filter { $0.pageId == store.currentSpreadId }
+                    .contains { tab in
+                        CGRect(x: tab.x, y: tab.y, width: TabMarker.width, height: TabMarker.height)
+                            .contains(loc)
+                    }
+            }
+
             if gestureRecognizer === attachmentRecognizer {
                 return store.attachments
                     .filter { $0.pageId == store.currentSpreadId }
@@ -384,6 +445,7 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
         ) -> Bool {
             // Note drag and attachment drag are exclusive — never simultaneous
             if gestureRecognizer === noteDragRecognizer   || other === noteDragRecognizer   { return false }
+            if gestureRecognizer === tabDragRecognizer    || other === tabDragRecognizer    { return false }
             if gestureRecognizer === attachmentRecognizer || other === attachmentRecognizer { return false }
             return true
         }
@@ -415,6 +477,13 @@ struct SpreadHostView: View {
                     .frame(width: note.width, height: note.isCollapsed ? StickyNote.headerHeight : note.height)
                     .offset(x: note.x, y: note.y)
                     .zIndex(1)
+            }
+
+            // Tab markers overlay
+            ForEach(store.tabMarkers.filter { $0.pageId == store.currentSpreadId }) { tab in
+                TabMarkerView(store: store, markerId: tab.id)
+                    .offset(x: tab.x, y: tab.y)
+                    .zIndex(1.5)
             }
 
             // Attachments overlay

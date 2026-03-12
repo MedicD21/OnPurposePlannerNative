@@ -4,12 +4,21 @@ import SwiftUI
 struct OnPurposePlannerNativeApp: App {
     @StateObject private var store    = PlannerStore()
     @StateObject private var settings = AppSettings()
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(store)
-                .environmentObject(settings)
+            if hasCompletedOnboarding {
+                ContentView()
+                    .environmentObject(store)
+                    .environmentObject(settings)
+            } else {
+                OnboardingView(
+                    hasCompletedOnboarding: $hasCompletedOnboarding,
+                    store: store,
+                    settings: settings
+                )
+            }
         }
     }
 }

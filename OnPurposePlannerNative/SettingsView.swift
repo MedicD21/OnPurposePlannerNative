@@ -1,4 +1,5 @@
 import SwiftUI
+import EventKit
 
 struct SettingsView: View {
     @EnvironmentObject var settings: AppSettings
@@ -48,9 +49,41 @@ struct SettingsView: View {
                     }
                 }
 
+                // MARK: Planner Style
+                Section("Planner Style") {
+                    ForEach(PlannerStyle.allCases, id: \.self) { style in
+                        HStack {
+                            Image(systemName: style.icon)
+                                .foregroundStyle(PlannerTheme.accent)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(style.rawValue)
+                                Text(style.description)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if settings.plannerStyle == style {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(PlannerTheme.accent)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { settings.plannerStyle = style }
+                    }
+                    Text("More styles coming in a future update.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                // MARK: Calendar
+                Section("iOS Calendar") {
+                    calendarSection
+                }
+
                 // MARK: Info
                 Section {
-                    Text("Export bundles all drawings, sticky notes, and attachments into a single JSON file. Share it via AirDrop, Files, or email and import it on another device to restore your planner.")
+                    Text("Export bundles all drawings, sticky notes, tab markers, and attachments into a single JSON file. Share it via AirDrop, Files, or email and import it on another device to restore your planner.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -78,6 +111,76 @@ struct SettingsView: View {
             Button("OK") {}
         } message: {
             Text(alertMessage)
+        }
+    }
+
+    // MARK: - Calendar section
+
+    @ViewBuilder
+    private var calendarSection: some View {
+        let status = store.calendarManager.authStatus
+        switch status {
+        case .fullAccess:
+            let calendars = store.calendarManager.availableCalendars()
+            if calendars.isEmpty {
+                Text("No calendars found on this device.")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            } else {
+                ForEach(calendars, id: \.calendarIdentifier) { cal in
+                    let id = cal.calendarIdentifier
+                    let enabled = store.enabledCalendarIDs.isEmpty || store.enabledCalendarIDs.contains(id)
+                    HStack {
+                        Circle()
+                            .fill(Color(cgColor: cal.cgColor))
+                            .frame(width: 12, height: 12)
+                        Text(cal.title)
+                        Spacer()
+                        Image(systemName: enabled ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(enabled ? PlannerTheme.accent : .secondary)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        // If all were shown (empty = all), seed with all IDs first
+                        if store.enabledCalendarIDs.isEmpty {
+                            store.enabledCalendarIDs = Set(calendars.map { $0.calendarIdentifier })
+                        }
+                        if store.enabledCalendarIDs.contains(id) {
+                            store.enabledCalendarIDs.remove(id)
+                        } else {
+                            store.enabledCalendarIDs.insert(id)
+                        }
+                        // Empty set means "show all" — reset if all are selected
+                        if store.enabledCalendarIDs.count == calendars.count {
+                            store.enabledCalendarIDs = []
+                        }
+                    }
+                }
+                Text("Unchecked calendars are hidden from your planner. All calendars are shown by default.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+        case .denied, .restricted:
+            HStack {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                Text("Calendar access was denied.")
+                    .font(.callout)
+            }
+            Button("Open Settings to Enable") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+
+        default:
+            Button("Grant Calendar Access") {
+                Task { await store.calendarManager.requestAccess() }
+            }
+            Text("Allows your iOS calendar events to appear on planner pages.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
