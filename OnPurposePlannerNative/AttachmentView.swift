@@ -5,9 +5,7 @@ struct AttachmentView: View {
     @ObservedObject var store: PlannerStore
     let attachmentId: UUID
 
-    @State private var dragOffset: CGSize = .zero
-    @State private var currentScale: CGFloat = 1.0
-    @State private var baseScale: CGFloat = 1.0
+    @State private var showControls = false
 
     private var attachment: PageAttachment? {
         store.attachments.first { $0.id == attachmentId }
@@ -15,54 +13,46 @@ struct AttachmentView: View {
 
     var body: some View {
         if let attachment = attachment {
-            ZStack(alignment: .topTrailing) {
-                attachmentContent(attachment)
-                    .frame(width: attachment.width * currentScale,
-                           height: attachment.height * currentScale)
-
-                // Delete button
-                Button {
-                    store.deleteAttachment(id: attachmentId)
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundStyle(.white)
-                        .background(Circle().fill(Color.black.opacity(0.5)))
+            attachmentContent(attachment)
+                .frame(width: attachment.width, height: attachment.height)
+                // Delete button — top-right, visible only when controls shown
+                .overlay(alignment: .topTrailing) {
+                    if showControls {
+                        Button {
+                            store.deleteAttachment(id: attachmentId)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(.white)
+                                .background(Circle().fill(Color.black.opacity(0.5)))
+                        }
+                        .offset(x: 8, y: -8)
+                        .transition(.scale.combined(with: .opacity))
+                    }
                 }
-                .offset(x: 8, y: -8)
-            }
-            .offset(dragOffset)
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        dragOffset = value.translation
+                // Resize handle — bottom-right, visible only when controls shown
+                .overlay(alignment: .bottomTrailing) {
+                    if showControls {
+                        Image(systemName: "arrow.down.right.and.arrow.up.left")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 26, height: 26)
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                            .padding(6)
+                            .transition(.scale.combined(with: .opacity))
                     }
-                    .onEnded { value in
-                        store.mutateAttachment(id: attachmentId) { att in
-                            att.x += value.translation.width
-                            att.y += value.translation.height
-                        }
-                        dragOffset = .zero
+                }
+                // Selection ring when controls are shown
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.accentColor.opacity(showControls ? 0.7 : 0), lineWidth: 2)
+                )
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showControls.toggle()
                     }
-            )
-            .gesture(
-                MagnificationGesture()
-                    .onChanged { scale in
-                        currentScale = baseScale * scale
-                    }
-                    .onEnded { scale in
-                        let newScale = baseScale * scale
-                        baseScale = newScale
-                        currentScale = newScale
-                        store.mutateAttachment(id: attachmentId) { att in
-                            att.width  *= newScale / baseScale
-                            att.height *= newScale / baseScale
-                        }
-                        // Reset to 1 since we've baked the scale in
-                        baseScale = 1.0
-                        currentScale = 1.0
-                    }
-            )
+                }
+                .animation(.easeInOut(duration: 0.15), value: showControls)
         }
     }
 
@@ -91,7 +81,6 @@ struct FileAttachmentCardView: View {
     let data: Data
     let filename: String
 
-    @State private var showInteractionController = false
     @State private var tempURL: URL?
 
     var body: some View {
@@ -171,7 +160,6 @@ private struct DocumentInteractionRepresentable: UIViewControllerRepresentable {
         func documentInteractionControllerViewControllerForPreview(
             _ controller: UIDocumentInteractionController
         ) -> UIViewController {
-            // Find the top-most view controller
             guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                   let root = scene.windows.first?.rootViewController else {
                 return UIViewController()

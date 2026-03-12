@@ -223,6 +223,32 @@ class PlannerStore: ObservableObject {
         saveStickyNotes()
     }
 
+    // MARK: - Fill Mode
+
+    @Published var fillModeActive = false
+
+    // MARK: - Fill Image Persistence
+
+    private var fillImagesDirectory: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir  = docs.appendingPathComponent("fills", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    func fillImage(forPageId pageId: String) -> UIImage? {
+        let url = fillImagesDirectory.appendingPathComponent("\(pageId).png")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return UIImage(data: data)
+    }
+
+    func saveFillImage(_ image: UIImage, forPageId pageId: String) {
+        let url = fillImagesDirectory.appendingPathComponent("\(pageId).png")
+        if let data = image.pngData() {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
     // MARK: - Attachments Persistence
 
     private var attachmentsURL: URL {
@@ -265,6 +291,7 @@ class PlannerStore: ObservableObject {
         var stickyNotes: [StickyNote]
         var attachments: [PageAttachment]
         var drawings: [String: Data]   // pageId → PKDrawing.dataRepresentation()
+        var fills: [String: Data]?     // pageId → fill image PNG (optional for backwards compat)
     }
 
     func exportAllData() throws -> URL {
@@ -280,11 +307,23 @@ class PlannerStore: ObservableObject {
             }
         }
 
+        // Gather fill images
+        var fillMap: [String: Data] = [:]
+        if let fills = try? fm.contentsOfDirectory(at: fillImagesDirectory, includingPropertiesForKeys: nil) {
+            for file in fills where file.pathExtension == "png" {
+                let key = file.deletingPathExtension().lastPathComponent
+                if let data = try? Data(contentsOf: file) {
+                    fillMap[key] = data
+                }
+            }
+        }
+
         let export = PlannerExportData(
             exportDate: Date(),
             stickyNotes: stickyNotes,
             attachments: attachments,
-            drawings: drawingMap
+            drawings: drawingMap,
+            fills: fillMap
         )
 
         let encoder = JSONEncoder()
@@ -310,6 +349,15 @@ class PlannerStore: ObservableObject {
             try? drawingData.write(to: url, options: .atomic)
         }
         drawingsCache.removeAll()
+
+        // Restore fill images
+        if let fills = export.fills {
+            try? fm.createDirectory(at: fillImagesDirectory, withIntermediateDirectories: true)
+            for (pageId, fillData) in fills {
+                let url = fillImagesDirectory.appendingPathComponent("\(pageId).png")
+                try? fillData.write(to: url, options: .atomic)
+            }
+        }
 
         // Restore sticky notes and attachments
         stickyNotes = export.stickyNotes

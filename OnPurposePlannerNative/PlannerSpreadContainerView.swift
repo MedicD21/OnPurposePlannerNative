@@ -156,6 +156,15 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
         context.coordinator.noteDragRecognizer = noteDrag
         scrollView.panGestureRecognizer.require(toFail: noteDrag)
 
+        // One-finger pan for attachment move + resize (same pattern as noteDrag).
+        let attachmentDrag = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleAttachmentGesture(_:)))
+        attachmentDrag.minimumNumberOfTouches = 1
+        attachmentDrag.maximumNumberOfTouches = 1
+        attachmentDrag.delegate = context.coordinator
+        scrollView.addGestureRecognizer(attachmentDrag)
+        context.coordinator.attachmentRecognizer = attachmentDrag
+        scrollView.panGestureRecognizer.require(toFail: attachmentDrag)
+
         return scrollView
     }
 
@@ -169,13 +178,22 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
         var store: PlannerStore
         weak var scrollView:        UIScrollView?
         var hostingController:      UIHostingController<SpreadHostView>?
-        weak var navPanRecognizer:  UIPanGestureRecognizer?   // 2-finger nav pan
+        weak var navPanRecognizer:   UIPanGestureRecognizer?   // 2-finger nav pan
         weak var noteDragRecognizer: UIPanGestureRecognizer?  // 1-finger note drag
+        weak var attachmentRecognizer: UIPanGestureRecognizer? // 1-finger attachment move/resize
 
         // Note drag state
-        private var draggingNoteId:    UUID?
+        private var draggingNoteId:      UUID?
         private var noteDragStartLoc:    CGPoint = .zero
         private var noteDragStartOrigin: CGPoint = .zero
+
+        // Attachment drag/resize state
+        private var draggingAttachmentId: UUID?
+        private var isResizingAttachment: Bool   = false
+        private var attachStartLoc:       CGPoint = .zero
+        private var attachStartOrigin:    CGPoint = .zero
+        private var attachStartSize:      CGSize  = .zero
+        private let resizeHandleSize:     CGFloat = 44
 
         // Nav pan state
         private var navPanStartLoc: CGPoint = .zero
@@ -279,34 +297,94 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
             }
         }
 
+        // MARK: - Attachment move / resize (UIKit-level so it beats the scroll-view pan)
+
+        @objc func handleAttachmentGesture(_ recognizer: UIPanGestureRecognizer) {
+            guard let scrollView  = scrollView,
+                  let contentView = hostingController?.view else { return }
+
+            switch recognizer.state {
+            case .began:
+                let loc = scrollView.convert(recognizer.location(in: scrollView), to: contentView)
+                for att in store.attachments where att.pageId == store.currentSpreadId {
+                    let frame = CGRect(x: att.x, y: att.y, width: att.width, height: att.height)
+                    guard frame.contains(loc) else { continue }
+                    draggingAttachmentId = att.id
+                    attachStartLoc    = loc
+                    attachStartOrigin = CGPoint(x: att.x, y: att.y)
+                    attachStartSize   = CGSize(width: att.width, height: att.height)
+                    let resizeRect = CGRect(
+                        x: att.x + att.width  - resizeHandleSize,
+                        y: att.y + att.height - resizeHandleSize,
+                        width: resizeHandleSize, height: resizeHandleSize)
+                    isResizingAttachment = resizeRect.contains(loc)
+                    break
+                }
+                if draggingAttachmentId == nil { recognizer.state = .cancelled }
+
+            case .changed:
+                guard let id = draggingAttachmentId else { return }
+                let loc = scrollView.convert(recognizer.location(in: scrollView), to: contentView)
+                let dx  = loc.x - attachStartLoc.x
+                let dy  = loc.y - attachStartLoc.y
+                if isResizingAttachment {
+                    store.mutateAttachment(id: id) {
+                        $0.width  = max(80, self.attachStartSize.width  + dx)
+                        $0.height = max(80, self.attachStartSize.height + dy)
+                    }
+                } else {
+                    store.mutateAttachment(id: id) {
+                        $0.x = self.attachStartOrigin.x + dx
+                        $0.y = self.attachStartOrigin.y + dy
+                    }
+                }
+
+            case .ended, .cancelled, .failed:
+                draggingAttachmentId = nil
+                isResizingAttachment = false
+
+            default: break
+            }
+        }
+
         // MARK: - UIGestureRecognizerDelegate
 
-        /// Block the note-drag recognizer from even starting unless the touch lands on a note header.
+        /// Block custom recognizers from starting unless the touch lands on their target area.
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard gestureRecognizer === noteDragRecognizer,
-                  let scrollView  = scrollView,
+            guard let scrollView  = scrollView,
                   let contentView = hostingController?.view else { return true }
 
             let loc = scrollView.convert(gestureRecognizer.location(in: scrollView), to: contentView)
-            return store.stickyNotes
-                .filter { $0.pageId == store.currentSpreadId }
-                .contains { note in
-                    CGRect(x: note.x, y: note.y,
-                           width: note.width, height: StickyNote.headerHeight)
-                        .contains(loc)
-                }
+
+            if gestureRecognizer === noteDragRecognizer {
+                return store.stickyNotes
+                    .filter { $0.pageId == store.currentSpreadId }
+                    .contains { note in
+                        CGRect(x: note.x, y: note.y,
+                               width: note.width, height: StickyNote.headerHeight)
+                            .contains(loc)
+                    }
+            }
+
+            if gestureRecognizer === attachmentRecognizer {
+                return store.attachments
+                    .filter { $0.pageId == store.currentSpreadId }
+                    .contains { att in
+                        CGRect(x: att.x, y: att.y, width: att.width, height: att.height)
+                            .contains(loc)
+                    }
+            }
+
+            return true
         }
 
-        /// Allow simultaneous recognition between all our custom recognizers and the scroll view.
-        /// The noteDrag/scroll-pan relationship is handled by require(toFail:), not simultaneity.
         func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
         ) -> Bool {
-            // Note drag is exclusive — never simultaneous
-            if gestureRecognizer === noteDragRecognizer || other === noteDragRecognizer {
-                return false
-            }
+            // Note drag and attachment drag are exclusive — never simultaneous
+            if gestureRecognizer === noteDragRecognizer   || other === noteDragRecognizer   { return false }
+            if gestureRecognizer === attachmentRecognizer || other === attachmentRecognizer { return false }
             return true
         }
     }

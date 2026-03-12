@@ -85,6 +85,15 @@ struct FloatingToolbarView: View {
                 iconButton(systemImage: "doc.badge.plus", help: "Attach file") {
                     showDocumentPicker = true
                 }
+
+                // Paint bucket fill
+                iconButton(
+                    systemImage: "paintbucket",
+                    help: "Fill color",
+                    isActive: store.fillModeActive
+                ) {
+                    store.fillModeActive.toggle()
+                }
             }
             .padding(.vertical, 8)
 
@@ -171,12 +180,21 @@ struct FloatingToolbarView: View {
         }
     }
 
-    private func iconButton(systemImage: String, help: String, action: @escaping () -> Void) -> some View {
+    private func iconButton(
+        systemImage: String,
+        help: String,
+        isActive: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(PlannerTheme.ink)
+                .foregroundStyle(isActive ? PlannerTheme.accent : PlannerTheme.ink)
                 .frame(width: 36, height: 32)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isActive ? PlannerTheme.accent.opacity(0.15) : Color.clear)
+                )
         }
         .help(help)
     }
