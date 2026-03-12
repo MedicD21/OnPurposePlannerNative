@@ -134,8 +134,8 @@ struct MonthPaperView: View {
                 .foregroundStyle(PlannerTheme.line)
 
             HStack(spacing: 0) {
-                ForEach(weekdayInitials, id: \.self) { wd in
-                    Text(wd)
+                ForEach(weekdayInitials.indices, id: \.self) { i in
+                    Text(weekdayInitials[i])
                         .font(.system(size: 7, weight: .medium))
                         .foregroundStyle(PlannerTheme.line)
                         .frame(width: 16)
@@ -161,8 +161,8 @@ struct MonthPaperView: View {
 
     private var weekdayHeaderRow: some View {
         HStack(spacing: 0) {
-            ForEach(weekdayInitials, id: \.self) { wd in
-                Text(wd)
+            ForEach(weekdayInitials.indices, id: \.self) { i in
+                Text(weekdayInitials[i])
                     .font(PlannerTheme.weekdayFont)
                     .foregroundStyle(PlannerTheme.line)
                     .frame(maxWidth: .infinity)

@@ -26,6 +26,11 @@
 	<string>Used to display your calendar events on planner pages.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Used to attach photos to planner pages.</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

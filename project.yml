@@ -44,6 +44,8 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
         UIRequiresFullScreen: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
         UIStatusBarStyle: UIStatusBarStyleDefault
         UILaunchScreen:
           UIColorName: ""
