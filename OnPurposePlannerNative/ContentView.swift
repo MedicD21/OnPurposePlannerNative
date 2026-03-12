@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var store: PlannerStore
+    @EnvironmentObject var settings: AppSettings
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -34,10 +35,12 @@ struct ContentView: View {
         }
         .background(PlannerTheme.paper)
         .statusBar(hidden: true)
+        .preferredColorScheme(settings.themeMode.colorScheme)
     }
 }
 
 #Preview {
     ContentView()
         .environmentObject(PlannerStore())
+        .environmentObject(AppSettings())
 }

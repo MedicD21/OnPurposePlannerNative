@@ -132,17 +132,29 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
             context.coordinator.centerContent(scrollView)
         }
 
-        // Two-finger swipe recognizer
+        // Two-finger swipe recognizer (custom, for same-direction swipe navigation)
         let swipe = TwoFingerSwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTwoFingerSwipe(_:)))
         swipe.delegate = context.coordinator
         scrollView.addGestureRecognizer(swipe)
 
-        // One-finger swipe: vertical on month paper → months, horizontal on week paper → weeks
-        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleOneFingerPan(_:)))
-        pan.minimumNumberOfTouches = 1
-        pan.maximumNumberOfTouches = 1
+        // Two-finger pan: vertical on month paper → months, horizontal on week paper → weeks
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTwoFingerPan(_:)))
+        pan.minimumNumberOfTouches = 2
+        pan.maximumNumberOfTouches = 2
         pan.delegate = context.coordinator
         scrollView.addGestureRecognizer(pan)
+        context.coordinator.navPanRecognizer = pan
+
+        // One-finger pan exclusively for note-header dragging.
+        // scrollView.panGestureRecognizer requires this to fail first so the
+        // scroll pan only starts when the touch is NOT on a sticky-note header.
+        let noteDrag = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleNoteDrag(_:)))
+        noteDrag.minimumNumberOfTouches = 1
+        noteDrag.maximumNumberOfTouches = 1
+        noteDrag.delegate = context.coordinator
+        scrollView.addGestureRecognizer(noteDrag)
+        context.coordinator.noteDragRecognizer = noteDrag
+        scrollView.panGestureRecognizer.require(toFail: noteDrag)
 
         return scrollView
     }
@@ -155,20 +167,24 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
 
     class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
         var store: PlannerStore
-        weak var scrollView: UIScrollView?
-        var hostingController: UIHostingController<SpreadHostView>?
+        weak var scrollView:        UIScrollView?
+        var hostingController:      UIHostingController<SpreadHostView>?
+        weak var navPanRecognizer:  UIPanGestureRecognizer?   // 2-finger nav pan
+        weak var noteDragRecognizer: UIPanGestureRecognizer?  // 1-finger note drag
 
-        init(store: PlannerStore) {
-            self.store = store
-        }
+        // Note drag state
+        private var draggingNoteId:    UUID?
+        private var noteDragStartLoc:    CGPoint = .zero
+        private var noteDragStartOrigin: CGPoint = .zero
 
-        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-            return hostingController?.view
-        }
+        // Nav pan state
+        private var navPanStartLoc: CGPoint = .zero
 
-        func scrollViewDidZoom(_ scrollView: UIScrollView) {
-            centerContent(scrollView)
-        }
+        init(store: PlannerStore) { self.store = store }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { hostingController?.view }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) { centerContent(scrollView) }
 
         func centerContent(_ scrollView: UIScrollView) {
             guard let content = hostingController?.view else { return }
@@ -177,73 +193,120 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
             scrollView.contentInset = UIEdgeInsets(top: offsetY, left: offsetX, bottom: offsetY, right: offsetX)
         }
 
-        // MARK: - One-finger swipe (paper-zone navigation)
+        // MARK: - Two-finger pan navigation (left/right paper zones)
 
-        private var panStartLocation: CGPoint = .zero
-
-        @objc func handleOneFingerPan(_ recognizer: UIPanGestureRecognizer) {
-            guard let scrollView = scrollView,
+        @objc func handleTwoFingerPan(_ recognizer: UIPanGestureRecognizer) {
+            guard let scrollView  = scrollView,
                   let contentView = hostingController?.view else { return }
-
             switch recognizer.state {
             case .began:
-                panStartLocation = recognizer.location(in: scrollView)
+                navPanStartLoc = recognizer.location(in: scrollView)
             case .ended, .cancelled:
                 let end = recognizer.location(in: scrollView)
-                let dx  = end.x - panStartLocation.x
-                let dy  = end.y - panStartLocation.y
+                let dx  = end.x - navPanStartLoc.x
+                let dy  = end.y - navPanStartLoc.y
                 guard sqrt(dx*dx + dy*dy) > 60 else { return }
-
-                // Determine which paper the swipe started on
-                let contentStart = scrollView.convert(panStartLocation, to: contentView)
+                let contentStart = scrollView.convert(navPanStartLoc, to: contentView)
                 let isLeftPaper  = contentStart.x < PlannerTheme.leftPaperWidth
-
                 DispatchQueue.main.async {
                     if isLeftPaper {
-                        // Vertical swipe on month paper → navigate months
                         guard abs(dy) > abs(dx) else { return }
                         if dy < 0 { self.store.goToNextMonth() }
                         else      { self.store.goToPreviousMonth() }
                     } else {
-                        // Horizontal swipe on week paper → navigate weeks
                         guard abs(dx) > abs(dy),
                               self.store.activeSpread == .monthWeek else { return }
                         if dx < 0 { self.store.goToNextWeek() }
                         else      { self.store.goToPreviousWeek() }
                     }
                 }
-            default:
-                break
+            default: break
             }
         }
+
+        // MARK: - Two-finger same-direction swipe (TwoFingerSwipeGestureRecognizer)
 
         @objc func handleTwoFingerSwipe(_ recognizer: TwoFingerSwipeGestureRecognizer) {
             guard recognizer.state == .recognized else { return }
             DispatchQueue.main.async {
                 switch recognizer.recognizedDirection {
-                case .left:
-                    if self.store.activeSpread == .monthWeek {
-                        self.store.goToNextWeek()
-                    }
-                case .right:
-                    if self.store.activeSpread == .monthWeek {
-                        self.store.goToPreviousWeek()
-                    }
-                case .up:
-                    self.store.goToNextMonth()
-                case .down:
-                    self.store.goToPreviousMonth()
-                case .none:
-                    break
+                case .left:  if self.store.activeSpread == .monthWeek { self.store.goToNextWeek() }
+                case .right: if self.store.activeSpread == .monthWeek { self.store.goToPreviousWeek() }
+                case .up:    self.store.goToNextMonth()
+                case .down:  self.store.goToPreviousMonth()
+                case .none:  break
                 }
             }
         }
 
-        // Allow the swipe gesture alongside the scroll view's own pan
+        // MARK: - Note header drag (UIKit-level so it beats the scroll-view pan)
+
+        @objc func handleNoteDrag(_ recognizer: UIPanGestureRecognizer) {
+            guard let scrollView  = scrollView,
+                  let contentView = hostingController?.view else { return }
+
+            switch recognizer.state {
+            case .began:
+                let loc = scrollView.convert(recognizer.location(in: scrollView), to: contentView)
+                for note in store.stickyNotes where note.pageId == store.currentSpreadId {
+                    let headerRect = CGRect(x: note.x, y: note.y,
+                                           width: note.width, height: StickyNote.headerHeight)
+                    if headerRect.contains(loc) {
+                        draggingNoteId    = note.id
+                        noteDragStartLoc    = loc
+                        noteDragStartOrigin = CGPoint(x: note.x, y: note.y)
+                        break
+                    }
+                }
+                // If not on a header the recognizer should have been blocked by shouldBegin,
+                // but guard defensively anyway.
+                if draggingNoteId == nil { recognizer.state = .cancelled }
+
+            case .changed:
+                guard let id = draggingNoteId else { return }
+                let loc = scrollView.convert(recognizer.location(in: scrollView), to: contentView)
+                let dx  = loc.x - noteDragStartLoc.x
+                let dy  = loc.y - noteDragStartLoc.y
+                store.mutateStickyNote(id: id) {
+                    $0.x = self.noteDragStartOrigin.x + dx
+                    $0.y = self.noteDragStartOrigin.y + dy
+                }
+
+            case .ended, .cancelled, .failed:
+                draggingNoteId = nil
+
+            default: break
+            }
+        }
+
+        // MARK: - UIGestureRecognizerDelegate
+
+        /// Block the note-drag recognizer from even starting unless the touch lands on a note header.
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard gestureRecognizer === noteDragRecognizer,
+                  let scrollView  = scrollView,
+                  let contentView = hostingController?.view else { return true }
+
+            let loc = scrollView.convert(gestureRecognizer.location(in: scrollView), to: contentView)
+            return store.stickyNotes
+                .filter { $0.pageId == store.currentSpreadId }
+                .contains { note in
+                    CGRect(x: note.x, y: note.y,
+                           width: note.width, height: StickyNote.headerHeight)
+                        .contains(loc)
+                }
+        }
+
+        /// Allow simultaneous recognition between all our custom recognizers and the scroll view.
+        /// The noteDrag/scroll-pan relationship is handled by require(toFail:), not simultaneity.
         func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
         ) -> Bool {
+            // Note drag is exclusive — never simultaneous
+            if gestureRecognizer === noteDragRecognizer || other === noteDragRecognizer {
+                return false
+            }
             return true
         }
     }

@@ -16,38 +16,25 @@ struct DrawingCanvasView: UIViewRepresentable {
         canvas.backgroundColor = .clear
         canvas.isOpaque        = false
 
-        // Load persisted drawing for this page
-        canvas.drawing = store.drawing(forPageId: pageId)
+        canvas.drawing  = store.drawing(forPageId: pageId)
         canvas.delegate = context.coordinator
         context.coordinator.canvas = canvas
 
-        // Connect the shared PKToolPicker to this canvas.
-        // setVisible(true, forFirstResponder:) means the picker appears whenever
-        // this canvas is first responder — which happens automatically when the
-        // user taps/draws on it with the Pencil.
         store.toolPicker.setVisible(true, forFirstResponder: canvas)
         store.toolPicker.addObserver(canvas)
 
-        // Make the canvas first responder so the tool picker appears immediately.
-        DispatchQueue.main.async {
-            canvas.becomeFirstResponder()
-        }
+        DispatchQueue.main.async { canvas.becomeFirstResponder() }
 
         return canvas
     }
 
     func updateUIView(_ canvas: PKCanvasView, context: Context) {
-        // Switch page when the store changes (navigating weeks/months).
         if context.coordinator.pageId != pageId {
             context.coordinator.pageId = pageId
             canvas.drawing = store.drawing(forPageId: pageId)
-
-            // Re-register with the tool picker for the new canvas instance.
             store.toolPicker.setVisible(true, forFirstResponder: canvas)
             store.toolPicker.addObserver(canvas)
-            DispatchQueue.main.async {
-                canvas.becomeFirstResponder()
-            }
+            DispatchQueue.main.async { canvas.becomeFirstResponder() }
         }
     }
 
@@ -58,6 +45,10 @@ struct DrawingCanvasView: UIViewRepresentable {
         var store:  PlannerStore
         weak var canvas: PKCanvasView?
 
+        /// Guards against re-entrant shape replacement triggering another recognition pass.
+        private var isApplyingShape = false
+        private var shapeTimer: Timer?
+
         init(pageId: String, store: PlannerStore) {
             self.pageId = pageId
             self.store  = store
@@ -65,6 +56,32 @@ struct DrawingCanvasView: UIViewRepresentable {
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             store.saveDrawing(canvasView.drawing, forPageId: pageId)
+            guard !isApplyingShape else { return }
+
+            // Schedule shape recognition: fires 0.8 s after the last stroke change.
+            shapeTimer?.invalidate()
+            shapeTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: false) { [weak self, weak canvasView] _ in
+                guard let self, let canvasView else { return }
+                self.tryRecognizeLastStroke(in: canvasView)
+            }
+        }
+
+        // MARK: - Shape recognition
+
+        private func tryRecognizeLastStroke(in canvas: PKCanvasView) {
+            guard let lastStroke = canvas.drawing.strokes.last,
+                  let shape = ShapeRecognizer.recognize(lastStroke) else { return }
+
+            let newStrokes = ShapeRecognizer.makeStrokes(shape, template: lastStroke)
+
+            var drawing = canvas.drawing
+            drawing.strokes.removeLast()
+            drawing.strokes.append(contentsOf: newStrokes)
+
+            isApplyingShape = true
+            canvas.drawing  = drawing
+            store.saveDrawing(drawing, forPageId: pageId)
+            isApplyingShape = false
         }
     }
 }

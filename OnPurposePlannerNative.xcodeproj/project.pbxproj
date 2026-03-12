@@ -3,22 +3,26 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		1525B768AFB0CC81C413EC18 /* ImagePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D2C411DE53147752980454E /* ImagePickerView.swift */; };
 		1899417228077D67512F2336 /* NotesSpreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25B8AD5AFA595B224DBDED5B /* NotesSpreadView.swift */; };
 		259042F2071BDA3E2B99F3F0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF5341F0B7E32423EF2293A /* ContentView.swift */; };
+		2AC2A573293BE8CADFA633A1 /* ShapeRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20D09233E206A5E4D9EEECF /* ShapeRecognizer.swift */; };
 		2FC9FD2CE02EE5C2EE3CC012 /* MonthTabsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F14ABDC7EF63B3DE1F73BC7F /* MonthTabsView.swift */; };
 		302BCD862732C9C7CEE48E89 /* StickyNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BE124CD5F3C3BF7CB6FBD5 /* StickyNote.swift */; };
+		49B8F55F49C195C5F913818E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 26B96CC22783AB1F691E5454 /* Assets.xcassets */; };
 		4BCB4B002360998B80712CE3 /* DrawingCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9601B2AC67C368D40BE4DE07 /* DrawingCanvasView.swift */; };
 		6C0843BD1C15FBB34AA465A1 /* OnPurposePlannerNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE1CB0CAEFE8E6DBA1542C3 /* OnPurposePlannerNativeApp.swift */; };
 		6F05343DC9F30D7A6D5A5C77 /* StickyNoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C405AC7D319343F790689D17 /* StickyNoteView.swift */; };
+		8F6CDD3A3EF071D5A7E3281B /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6D9A4155B8A8263C93289B2 /* AppSettings.swift */; };
 		99EA89586B28B988C34137C8 /* AttachmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 083676C8EDE6452083990425 /* AttachmentView.swift */; };
 		A47504F91C02CB0CF075AC9E /* DocumentPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 388C9BF19F3A4736400A3A10 /* DocumentPickerView.swift */; };
 		AB80B6F7D54608B0F6128E97 /* PlannerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5193B25138C1A21EA64D6FF8 /* PlannerStore.swift */; };
 		BD9797EC236BA81F226D7595 /* PlanningSpreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27C2DB878CF3960933EFBA2A /* PlanningSpreadView.swift */; };
+		CB7A2779D8893AE9D1C44ABE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CBF90BEDFA13DC9EB04D115 /* SettingsView.swift */; };
 		DE8292428E95914B8CBB59F9 /* MonthPaperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F643AF9044F839E75030FB95 /* MonthPaperView.swift */; };
 		DEB584EA309225E2AF0583AC /* PageAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6BA5C5B30F4729A4CB28873 /* PageAttachment.swift */; };
 		E2EC2FC67D9CEDA0FDA1E023 /* WeekPaperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17DA413ABC7836AAB7FDD6D3 /* WeekPaperView.swift */; };
@@ -34,8 +38,9 @@
 		0D2C411DE53147752980454E /* ImagePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePickerView.swift; sourceTree = "<group>"; };
 		17DA413ABC7836AAB7FDD6D3 /* WeekPaperView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekPaperView.swift; sourceTree = "<group>"; };
 		25B8AD5AFA595B224DBDED5B /* NotesSpreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesSpreadView.swift; sourceTree = "<group>"; };
+		26B96CC22783AB1F691E5454 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		27C2DB878CF3960933EFBA2A /* PlanningSpreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanningSpreadView.swift; sourceTree = "<group>"; };
-		2DA6A966082EA97562ABC129 /* OnPurposePlannerNative.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OnPurposePlannerNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2DA6A966082EA97562ABC129 /* OnPurposePlannerNative.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OnPurposePlannerNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		361B3B6F5C4A218810D7FC0A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		388C9BF19F3A4736400A3A10 /* DocumentPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPickerView.swift; sourceTree = "<group>"; };
 		3DE1CB0CAEFE8E6DBA1542C3 /* OnPurposePlannerNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnPurposePlannerNativeApp.swift; sourceTree = "<group>"; };
@@ -43,8 +48,11 @@
 		5193B25138C1A21EA64D6FF8 /* PlannerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerStore.swift; sourceTree = "<group>"; };
 		69B4559D4231F028AB94193F /* CalendarData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarData.swift; sourceTree = "<group>"; };
 		7DF5341F0B7E32423EF2293A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		8CBF90BEDFA13DC9EB04D115 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		9601B2AC67C368D40BE4DE07 /* DrawingCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawingCanvasView.swift; sourceTree = "<group>"; };
 		97BE124CD5F3C3BF7CB6FBD5 /* StickyNote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StickyNote.swift; sourceTree = "<group>"; };
+		A6D9A4155B8A8263C93289B2 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		C20D09233E206A5E4D9EEECF /* ShapeRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShapeRecognizer.swift; sourceTree = "<group>"; };
 		C405AC7D319343F790689D17 /* StickyNoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StickyNoteView.swift; sourceTree = "<group>"; };
 		C54590027297ABE3CF621040 /* ZoomableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomableView.swift; sourceTree = "<group>"; };
 		D6BA5C5B30F4729A4CB28873 /* PageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageAttachment.swift; sourceTree = "<group>"; };
@@ -58,6 +66,8 @@
 		2E477F382ECACE311DE837F3 /* OnPurposePlannerNative */ = {
 			isa = PBXGroup;
 			children = (
+				A6D9A4155B8A8263C93289B2 /* AppSettings.swift */,
+				26B96CC22783AB1F691E5454 /* Assets.xcassets */,
 				083676C8EDE6452083990425 /* AttachmentView.swift */,
 				69B4559D4231F028AB94193F /* CalendarData.swift */,
 				7DF5341F0B7E32423EF2293A /* ContentView.swift */,
@@ -75,6 +85,8 @@
 				5193B25138C1A21EA64D6FF8 /* PlannerStore.swift */,
 				E927ADFB66CFE906C92FCAC3 /* PlannerTheme.swift */,
 				27C2DB878CF3960933EFBA2A /* PlanningSpreadView.swift */,
+				8CBF90BEDFA13DC9EB04D115 /* SettingsView.swift */,
+				C20D09233E206A5E4D9EEECF /* ShapeRecognizer.swift */,
 				97BE124CD5F3C3BF7CB6FBD5 /* StickyNote.swift */,
 				C405AC7D319343F790689D17 /* StickyNoteView.swift */,
 				17DA413ABC7836AAB7FDD6D3 /* WeekPaperView.swift */,
@@ -107,6 +119,7 @@
 			buildConfigurationList = FCBC9E9A8D8CAD39402E3707 /* Build configuration list for PBXNativeTarget "OnPurposePlannerNative" */;
 			buildPhases = (
 				9B69F9AB8B8E83C6B623A645 /* Sources */,
+				E251D44D659CDD9E9CB3033B /* Resources */,
 			);
 			buildRules = (
 			);
@@ -126,10 +139,9 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1600;
+				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					1050EC86B51C4C17A7413EB7 = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -144,7 +156,6 @@
 			);
 			mainGroup = F8F9CE8018280833CD308A06;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -153,11 +164,23 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		E251D44D659CDD9E9CB3033B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				49B8F55F49C195C5F913818E /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		9B69F9AB8B8E83C6B623A645 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8F6CDD3A3EF071D5A7E3281B /* AppSettings.swift in Sources */,
 				99EA89586B28B988C34137C8 /* AttachmentView.swift in Sources */,
 				FE1011409AB776A3A8D120C7 /* CalendarData.swift in Sources */,
 				259042F2071BDA3E2B99F3F0 /* ContentView.swift in Sources */,
@@ -174,6 +197,8 @@
 				AB80B6F7D54608B0F6128E97 /* PlannerStore.swift in Sources */,
 				F1F3335C32C9240AC92D7DFA /* PlannerTheme.swift in Sources */,
 				BD9797EC236BA81F226D7595 /* PlanningSpreadView.swift in Sources */,
+				CB7A2779D8893AE9D1C44ABE /* SettingsView.swift in Sources */,
+				2AC2A573293BE8CADFA633A1 /* ShapeRecognizer.swift in Sources */,
 				302BCD862732C9C7CEE48E89 /* StickyNote.swift in Sources */,
 				6F05343DC9F30D7A6D5A5C77 /* StickyNoteView.swift in Sources */,
 				E2EC2FC67D9CEDA0FDA1E023 /* WeekPaperView.swift in Sources */,
@@ -188,6 +213,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -219,8 +245,10 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 286LKF859M;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -234,6 +262,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -249,7 +278,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = OnPurposePlannerNative/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -270,7 +298,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = OnPurposePlannerNative/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -289,6 +316,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -320,8 +348,10 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 286LKF859M;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -342,6 +372,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;

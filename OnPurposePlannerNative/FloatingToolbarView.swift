@@ -7,10 +7,12 @@ import SwiftUI
 /// automatically when a PKCanvasView is first responder.
 struct FloatingToolbarView: View {
     @EnvironmentObject var store: PlannerStore
+    @EnvironmentObject var settings: AppSettings
 
     @State private var offset: CGSize = .zero
     @State private var showImagePicker    = false
     @State private var showDocumentPicker = false
+    @State private var showSettings       = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -85,6 +87,16 @@ struct FloatingToolbarView: View {
                 }
             }
             .padding(.vertical, 8)
+
+            Divider().frame(width: 44)
+
+            // Settings
+            VStack(spacing: 4) {
+                iconButton(systemImage: "gearshape", help: "Settings") {
+                    showSettings = true
+                }
+            }
+            .padding(.vertical, 8)
         }
         .frame(width: 56)
         .background(
@@ -125,6 +137,10 @@ struct FloatingToolbarView: View {
                 store.addAttachment(attachment)
                 showDocumentPicker = false
             }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView(store: store)
+                .environmentObject(settings)
         }
     }
 

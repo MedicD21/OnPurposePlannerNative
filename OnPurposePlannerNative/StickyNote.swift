@@ -42,7 +42,8 @@ struct StickyNote: Identifiable, Codable {
     var colorKey: StickyColor
     var isCollapsed: Bool
 
-    static let headerHeight: CGFloat = 36
+    static let headerHeight: CGFloat  = 36
+    static let defaultSize:  CGSize   = CGSize(width: 240, height: 280)
 
     var drawingPageId: String { "sticky-\(id.uuidString)" }
 

@@ -4,8 +4,6 @@ struct StickyNoteView: View {
     @ObservedObject var store: PlannerStore
     let noteId: UUID
 
-    @State private var dragOffset: CGSize = .zero
-
     private var note: StickyNote? {
         store.stickyNotes.first { $0.id == noteId }
     }
@@ -13,28 +11,28 @@ struct StickyNoteView: View {
     var body: some View {
         if let note = note {
             VStack(spacing: 0) {
-                // Header bar
                 headerBar(note: note)
-
-                // Body (drawing canvas) — hidden when collapsed
                 if !note.isCollapsed {
                     DrawingCanvasView(pageId: note.drawingPageId, store: store)
                         .frame(width: note.width, height: note.height - StickyNote.headerHeight)
                         .background(note.colorKey.face)
                 }
             }
-            .offset(dragOffset)
+            // No .offset(dragOffset) — dragging is handled by the UIKit
+            // UIPanGestureRecognizer in PlannerSpreadContainerView.Coordinator,
+            // which directly updates note.x / note.y in the store.
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .shadow(color: .black.opacity(0.15), radius: 6, x: 2, y: 3)
+            .shadow(color: .black.opacity(0.18), radius: 6, x: 2, y: 3)
         }
     }
 
-    // MARK: - Header
+    // MARK: - Header bar (colour picker + collapse + delete)
+    // Drag gesture removed — the UIKit gesture recogniser in the scroll-view
+    // coordinator detects header-area touches and drives the drag.
 
     @ViewBuilder
     private func headerBar(note: StickyNote) -> some View {
         HStack(spacing: 4) {
-            // Color dots
             ForEach(StickyColor.allCases, id: \.self) { color in
                 Circle()
                     .fill(color.face)
@@ -47,7 +45,13 @@ struct StickyNoteView: View {
 
             Spacer()
 
-            // Collapse / expand button
+            // Drag-handle indicator (visual only)
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.white.opacity(0.6))
+
+            Spacer()
+
             Button {
                 store.mutateStickyNote(id: noteId) { $0.isCollapsed.toggle() }
             } label: {
@@ -57,7 +61,6 @@ struct StickyNoteView: View {
                     .frame(width: 22, height: 22)
             }
 
-            // Delete button
             Button {
                 store.deleteStickyNote(id: noteId)
             } label: {
@@ -70,19 +73,5 @@ struct StickyNoteView: View {
         .padding(.horizontal, 6)
         .frame(height: StickyNote.headerHeight)
         .background(note.colorKey.header)
-        // Drag gesture only on header
-        .gesture(
-            DragGesture()
-                .onChanged { value in
-                    dragOffset = value.translation
-                }
-                .onEnded { value in
-                    store.mutateStickyNote(id: noteId) { n in
-                        n.x += value.translation.width
-                        n.y += value.translation.height
-                    }
-                    dragOffset = .zero
-                }
-        )
     }
 }

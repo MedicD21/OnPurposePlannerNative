@@ -198,7 +198,11 @@ class PlannerStore: ObservableObject {
     }
 
     func addStickyNote(spreadId: String) {
-        let note = StickyNote(pageId: spreadId, x: 100, y: 100)
+        // Stagger placement so consecutive notes don't stack on top of each other
+        let offset = CGFloat(stickyNotes.filter { $0.pageId == spreadId }.count) * 30
+        let x = min(120 + offset, PlannerTheme.spreadWidth  - StickyNote.defaultSize.width  - 40)
+        let y = min(120 + offset, PlannerTheme.spreadHeight - StickyNote.defaultSize.height - 40)
+        let note = StickyNote(pageId: spreadId, x: x, y: y)
         stickyNotes.append(note)
         saveStickyNotes()
     }
@@ -252,6 +256,66 @@ class PlannerStore: ObservableObject {
 
     func deleteAttachment(id: UUID) {
         attachments.removeAll { $0.id == id }
+        saveAttachments()
+    }
+
+    // MARK: - Export / Import
+
+    struct PlannerExportData: Codable {
+        var exportDate: Date
+        var stickyNotes: [StickyNote]
+        var attachments: [PageAttachment]
+        var drawings: [String: Data]   // pageId → PKDrawing.dataRepresentation()
+    }
+
+    func exportAllData() throws -> URL {
+        // Gather all drawing files from the drawings directory
+        var drawingMap: [String: Data] = [:]
+        let fm = FileManager.default
+        if let files = try? fm.contentsOfDirectory(at: drawingsDirectory, includingPropertiesForKeys: nil) {
+            for file in files where file.pathExtension == "drawing" {
+                let key = file.deletingPathExtension().lastPathComponent
+                if let data = try? Data(contentsOf: file) {
+                    drawingMap[key] = data
+                }
+            }
+        }
+
+        let export = PlannerExportData(
+            exportDate: Date(),
+            stickyNotes: stickyNotes,
+            attachments: attachments,
+            drawings: drawingMap
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(export)
+
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let url  = docs.appendingPathComponent("OnPurposePlanner-export.json")
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    func importAllData(_ data: Data) throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let export = try decoder.decode(PlannerExportData.self, from: data)
+
+        // Restore drawings
+        let fm = FileManager.default
+        try? fm.createDirectory(at: drawingsDirectory, withIntermediateDirectories: true)
+        for (pageId, drawingData) in export.drawings {
+            let url = drawingsDirectory.appendingPathComponent("\(pageId).drawing")
+            try? drawingData.write(to: url, options: .atomic)
+        }
+        drawingsCache.removeAll()
+
+        // Restore sticky notes and attachments
+        stickyNotes = export.stickyNotes
+        saveStickyNotes()
+        attachments = export.attachments
         saveAttachments()
     }
 }
