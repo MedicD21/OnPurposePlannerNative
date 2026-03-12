@@ -52,12 +52,13 @@ struct MonthPaperView: View {
 
     private var headerRow: some View {
         HStack(alignment: .top) {
-            // Large month number + year
+            // Large month name + year
             VStack(alignment: .leading, spacing: 0) {
-                Text(String(format: "%02d", store.currentMonth))
+                Text(monthNames[store.currentMonth - 1].uppercased())
                     .font(PlannerTheme.monthNumberFont)
                     .foregroundStyle(PlannerTheme.ink)
-                    .monospacedDigit()
+                    .minimumScaleFactor(0.35)
+                    .lineLimit(1)
                 Text(String(store.currentYear))
                     .font(PlannerTheme.yearFont)
                     .foregroundStyle(PlannerTheme.line)

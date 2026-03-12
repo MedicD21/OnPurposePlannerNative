@@ -32,6 +32,12 @@ class PlannerStore: ObservableObject {
     //   • Built-in undo / redo
     let toolPicker = PKToolPicker()
 
+    // MARK: - Sticky Notes
+    @Published var stickyNotes: [StickyNote] = []
+
+    // MARK: - Attachments
+    @Published var attachments: [PageAttachment] = []
+
     // MARK: - Init
 
     init() {
@@ -54,6 +60,9 @@ class PlannerStore: ObservableObject {
             color: UIColor(PlannerTheme.defaultPalette[0]),
             width: 2.0
         )
+
+        loadStickyNotes()
+        loadAttachments()
     }
 
     // MARK: - Page ID Scheme
@@ -68,6 +77,16 @@ class PlannerStore: ObservableObject {
             return "y\(currentYear)-month-\(currentMonth)-planning-\(side.rawValue)"
         case .notes:
             return "y\(currentYear)-month-\(currentMonth)-notes-\(side.rawValue)"
+        }
+    }
+
+    // MARK: - Spread-level Page ID (coarser — for sticky notes + attachments)
+
+    var currentSpreadId: String {
+        switch activeSpread {
+        case .monthWeek: return "y\(currentYear)-month-\(currentMonth)"
+        case .planning:  return "y\(currentYear)-month-\(currentMonth)-planning"
+        case .notes:     return "y\(currentYear)-month-\(currentMonth)-notes"
         }
     }
 
@@ -113,6 +132,17 @@ class PlannerStore: ObservableObject {
         currentWeekIndex = 0
     }
 
+    func navigateToToday() {
+        let today = Date()
+        let cal   = Calendar(identifier: .gregorian)
+        let year  = cal.component(.year,  from: today)
+        let month = cal.component(.month, from: today)
+        let calMonth = generateCalendar(year: year, month: month)
+        currentYear  = year
+        currentMonth = month
+        currentWeekIndex = weekIndex(for: today, in: calMonth)
+    }
+
     func goToPreviousWeek() {
         let cal = generateCalendar(year: currentYear, month: currentMonth)
         if currentWeekIndex > 0 {
@@ -146,5 +176,82 @@ class PlannerStore: ObservableObject {
     func goToNextMonth() {
         let (y, m) = shiftMonth(year: currentYear, month: currentMonth, by: 1)
         navigateToMonth(m, year: y)
+    }
+
+    // MARK: - Sticky Notes Persistence
+
+    private var stickyNotesURL: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return docs.appendingPathComponent("sticky-notes.json")
+    }
+
+    func loadStickyNotes() {
+        guard let data = try? Data(contentsOf: stickyNotesURL),
+              let notes = try? JSONDecoder().decode([StickyNote].self, from: data)
+        else { return }
+        stickyNotes = notes
+    }
+
+    private func saveStickyNotes() {
+        guard let data = try? JSONEncoder().encode(stickyNotes) else { return }
+        try? data.write(to: stickyNotesURL, options: .atomic)
+    }
+
+    func addStickyNote(spreadId: String) {
+        let note = StickyNote(pageId: spreadId, x: 100, y: 100)
+        stickyNotes.append(note)
+        saveStickyNotes()
+    }
+
+    func mutateStickyNote(id: UUID, transform: (inout StickyNote) -> Void) {
+        guard let idx = stickyNotes.firstIndex(where: { $0.id == id }) else { return }
+        transform(&stickyNotes[idx])
+        saveStickyNotes()
+    }
+
+    func deleteStickyNote(id: UUID) {
+        guard let note = stickyNotes.first(where: { $0.id == id }) else { return }
+        // Delete the drawing file and cache entry
+        let drawingPageId = note.drawingPageId
+        drawingsCache.removeValue(forKey: drawingPageId)
+        let url = drawingsDirectory.appendingPathComponent("\(drawingPageId).drawing")
+        try? FileManager.default.removeItem(at: url)
+        stickyNotes.removeAll { $0.id == id }
+        saveStickyNotes()
+    }
+
+    // MARK: - Attachments Persistence
+
+    private var attachmentsURL: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return docs.appendingPathComponent("attachments.json")
+    }
+
+    func loadAttachments() {
+        guard let data = try? Data(contentsOf: attachmentsURL),
+              let items = try? JSONDecoder().decode([PageAttachment].self, from: data)
+        else { return }
+        attachments = items
+    }
+
+    private func saveAttachments() {
+        guard let data = try? JSONEncoder().encode(attachments) else { return }
+        try? data.write(to: attachmentsURL, options: .atomic)
+    }
+
+    func addAttachment(_ attachment: PageAttachment) {
+        attachments.append(attachment)
+        saveAttachments()
+    }
+
+    func mutateAttachment(id: UUID, transform: (inout PageAttachment) -> Void) {
+        guard let idx = attachments.firstIndex(where: { $0.id == id }) else { return }
+        transform(&attachments[idx])
+        saveAttachments()
+    }
+
+    func deleteAttachment(id: UUID) {
+        attachments.removeAll { $0.id == id }
+        saveAttachments()
     }
 }

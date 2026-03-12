@@ -114,6 +114,14 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
         context.coordinator.hostingController = hc
         context.coordinator.scrollView        = scrollView
 
+        // Border + shadow around the spread content
+        hc.view.layer.borderColor   = UIColor(PlannerTheme.hairline).cgColor
+        hc.view.layer.borderWidth   = 1.5
+        hc.view.layer.shadowColor   = UIColor.black.cgColor
+        hc.view.layer.shadowOpacity = 0.14
+        hc.view.layer.shadowRadius  = 20
+        hc.view.layer.shadowOffset  = CGSize(width: 0, height: 6)
+
         // Fit-to-screen initial zoom
         DispatchQueue.main.async {
             let scaleX = scrollView.bounds.width  / PlannerTheme.spreadWidth
@@ -128,6 +136,13 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
         let swipe = TwoFingerSwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTwoFingerSwipe(_:)))
         swipe.delegate = context.coordinator
         scrollView.addGestureRecognizer(swipe)
+
+        // One-finger swipe: vertical on month paper → months, horizontal on week paper → weeks
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleOneFingerPan(_:)))
+        pan.minimumNumberOfTouches = 1
+        pan.maximumNumberOfTouches = 1
+        pan.delegate = context.coordinator
+        scrollView.addGestureRecognizer(pan)
 
         return scrollView
     }
@@ -160,6 +175,46 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
             let offsetX = max((scrollView.bounds.width  - content.frame.width)  * 0.5, 0)
             let offsetY = max((scrollView.bounds.height - content.frame.height) * 0.5, 0)
             scrollView.contentInset = UIEdgeInsets(top: offsetY, left: offsetX, bottom: offsetY, right: offsetX)
+        }
+
+        // MARK: - One-finger swipe (paper-zone navigation)
+
+        private var panStartLocation: CGPoint = .zero
+
+        @objc func handleOneFingerPan(_ recognizer: UIPanGestureRecognizer) {
+            guard let scrollView = scrollView,
+                  let contentView = hostingController?.view else { return }
+
+            switch recognizer.state {
+            case .began:
+                panStartLocation = recognizer.location(in: scrollView)
+            case .ended, .cancelled:
+                let end = recognizer.location(in: scrollView)
+                let dx  = end.x - panStartLocation.x
+                let dy  = end.y - panStartLocation.y
+                guard sqrt(dx*dx + dy*dy) > 60 else { return }
+
+                // Determine which paper the swipe started on
+                let contentStart = scrollView.convert(panStartLocation, to: contentView)
+                let isLeftPaper  = contentStart.x < PlannerTheme.leftPaperWidth
+
+                DispatchQueue.main.async {
+                    if isLeftPaper {
+                        // Vertical swipe on month paper → navigate months
+                        guard abs(dy) > abs(dx) else { return }
+                        if dy < 0 { self.store.goToNextMonth() }
+                        else      { self.store.goToPreviousMonth() }
+                    } else {
+                        // Horizontal swipe on week paper → navigate weeks
+                        guard abs(dx) > abs(dy),
+                              self.store.activeSpread == .monthWeek else { return }
+                        if dx < 0 { self.store.goToNextWeek() }
+                        else      { self.store.goToPreviousWeek() }
+                    }
+                }
+            default:
+                break
+            }
         }
 
         @objc func handleTwoFingerSwipe(_ recognizer: TwoFingerSwipeGestureRecognizer) {
@@ -200,14 +255,32 @@ struct SpreadHostView: View {
     @ObservedObject var store: PlannerStore
 
     var body: some View {
-        Group {
-            switch store.activeSpread {
-            case .monthWeek:
-                monthWeekSpread
-            case .planning:
-                PlanningSpreadView(store: store)
-            case .notes:
-                NotesSpreadView(store: store)
+        ZStack(alignment: .topLeading) {
+            // Main spread content
+            Group {
+                switch store.activeSpread {
+                case .monthWeek:
+                    monthWeekSpread
+                case .planning:
+                    PlanningSpreadView(store: store)
+                case .notes:
+                    NotesSpreadView(store: store)
+                }
+            }
+
+            // Sticky notes overlay — shows notes for current spread
+            ForEach(store.stickyNotes.filter { $0.pageId == store.currentSpreadId }) { note in
+                StickyNoteView(store: store, noteId: note.id)
+                    .frame(width: note.width, height: note.isCollapsed ? StickyNote.headerHeight : note.height)
+                    .offset(x: note.x, y: note.y)
+                    .zIndex(1)
+            }
+
+            // Attachments overlay
+            ForEach(store.attachments.filter { $0.pageId == store.currentSpreadId }) { att in
+                AttachmentView(store: store, attachmentId: att.id)
+                    .offset(x: att.x, y: att.y)
+                    .zIndex(2)
             }
         }
         .frame(width: PlannerTheme.spreadWidth, height: PlannerTheme.spreadHeight)

@@ -9,6 +9,8 @@ struct FloatingToolbarView: View {
     @EnvironmentObject var store: PlannerStore
 
     @State private var offset: CGSize = .zero
+    @State private var showImagePicker    = false
+    @State private var showDocumentPicker = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,6 +59,32 @@ struct FloatingToolbarView: View {
                 }
                 .padding(.vertical, 8)
             }
+
+            Divider().frame(width: 44)
+
+            // Today / Notes / Attachments
+            VStack(spacing: 4) {
+                // Today button
+                iconButton(systemImage: "calendar.badge.clock", help: "Go to today") {
+                    store.navigateToToday()
+                }
+
+                // Add sticky note
+                iconButton(systemImage: "note.text.badge.plus", help: "Add sticky note") {
+                    store.addStickyNote(spreadId: store.currentSpreadId)
+                }
+
+                // Attach photo
+                iconButton(systemImage: "photo.badge.plus", help: "Attach photo") {
+                    showImagePicker = true
+                }
+
+                // Attach file
+                iconButton(systemImage: "doc.badge.plus", help: "Attach file") {
+                    showDocumentPicker = true
+                }
+            }
+            .padding(.vertical, 8)
         }
         .frame(width: 56)
         .background(
@@ -74,6 +102,30 @@ struct FloatingToolbarView: View {
                     offset = value.translation
                 }
         )
+        .sheet(isPresented: $showImagePicker) {
+            ImagePickerView { data in
+                let attachment = PageAttachment(
+                    pageId: store.currentSpreadId,
+                    x: 740, y: 540,
+                    width: 300, height: 300,
+                    kind: .photo(data)
+                )
+                store.addAttachment(attachment)
+                showImagePicker = false
+            }
+        }
+        .sheet(isPresented: $showDocumentPicker) {
+            DocumentPickerView { data, filename in
+                let attachment = PageAttachment(
+                    pageId: store.currentSpreadId,
+                    x: 740, y: 540,
+                    width: 240, height: 160,
+                    kind: .file(data, filename)
+                )
+                store.addAttachment(attachment)
+                showDocumentPicker = false
+            }
+        }
     }
 
     // MARK: - Components
@@ -101,6 +153,16 @@ struct FloatingToolbarView: View {
                 .foregroundStyle(PlannerTheme.ink)
                 .frame(width: 36, height: 28)
         }
+    }
+
+    private func iconButton(systemImage: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(PlannerTheme.ink)
+                .frame(width: 36, height: 32)
+        }
+        .help(help)
     }
 
     private func shortLabel(_ spread: SpreadType) -> String {

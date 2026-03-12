@@ -47,5 +47,6 @@ targets:
         UIStatusBarStyle: UIStatusBarStyleDefault
         UILaunchScreen:
           UIColorName: ""
+        NSPhotoLibraryUsageDescription: "Used to attach photos to planner pages."
     scheme:
       testTargets: []
