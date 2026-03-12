@@ -53,6 +53,7 @@ struct DrawingCanvasView: UIViewRepresentable {
 
         store.toolPicker.setVisible(true, forFirstResponder: canvas)
         store.toolPicker.addObserver(canvas)
+        store.activeCanvas = canvas
         DispatchQueue.main.async { canvas.becomeFirstResponder() }
 
         // Tap gesture for paint-bucket fill — only registered when a grid is provided
@@ -155,7 +156,7 @@ struct DrawingCanvasView: UIViewRepresentable {
                 fillColor = UIColor(PlannerTheme.defaultPalette[0])
             }
 
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            DispatchQueue.global(qos: .userInitiated).async { [weak self, weak canvas] in
                 guard let self else { return }
                 let result = self.computeFill(
                     drawing: drawing,
@@ -166,13 +167,28 @@ struct DrawingCanvasView: UIViewRepresentable {
                     clampRect: cellRect)
                 DispatchQueue.main.async {
                     guard let result else { return }
+                    let previous = fillView.image   // capture for undo
                     fillView.image = result
                     self.store.saveFillImage(result, forPageId: self.pageId)
+                    // Register with the canvas UndoManager so 3-finger undo works
+                    canvas?.undoManager?.registerUndo(withTarget: self) { [weak fillView] coord in
+                        fillView?.image = previous
+                        coord.store.saveFillImage(previous, forPageId: coord.pageId)
+                    }
+                    canvas?.undoManager?.setActionName("Fill")
                 }
             }
         }
 
-        // Allow fill tap alongside PKCanvasView's own gesture recognizers
+        // Only intercept taps when fill mode is active; otherwise let them
+        // fall through to SwiftUI views (e.g. event-dot buttons below the canvas).
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            if gestureRecognizer is UITapGestureRecognizer {
+                return store.fillModeActive
+            }
+            return true
+        }
+
         func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer

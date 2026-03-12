@@ -16,19 +16,24 @@ struct MonthPaperView: View {
     private let today    = Date()
     private let todayCal = Calendar(identifier: .gregorian)
 
+    // Measured at runtime via PreferenceKey so fill cells align with actual layout
+    @State private var gridOriginY: CGFloat = 180
+
     /// Grid geometry used to clamp paint-bucket fill to individual day cells.
     private var monthFillGrid: MonthFillGrid {
         let cw = (paperWidth - 56) / 7
         let ch = (paperHeight - 240) / 6
         return MonthFillGrid(
             originX: 28,
-            originY: 240,
+            originY: gridOriginY,
             cellWidth: cw,
             cellHeight: ch)
     }
 
     // Calendar events for the displayed month, keyed by "YYYY-MM-DD"
-    @State private var monthEvents: [String: [EKEvent]] = [:]
+    @State private var monthEvents:      [String: [EKEvent]] = [:]
+    @State private var selectedDayEvents: [EKEvent] = []
+    @State private var showEventsSheet = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -47,6 +52,14 @@ struct MonthPaperView: View {
                 calendarGrid
                     .padding(.horizontal, 28)
                     .padding(.top, 4)
+                    // Measure the actual Y of the grid top so fill cells are correct
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: CalendarGridOriginYKey.self,
+                                value: geo.frame(in: .named("monthPaper")).minY)
+                        }
+                    )
 
                 Spacer()
             }
@@ -59,9 +72,20 @@ struct MonthPaperView: View {
                 monthGrid: monthFillGrid
             )
             .frame(width: paperWidth, height: paperHeight)
+
+            // Transparent event-dot tap targets sit ABOVE the canvas so they
+            // receive finger taps even though the canvas covers the whole page.
+            eventTapOverlay
+        }
+        .coordinateSpace(name: "monthPaper")
+        .onPreferenceChange(CalendarGridOriginYKey.self) { y in
+            if y > 0 { gridOriginY = y }
         }
         .frame(width: paperWidth, height: paperHeight)
         .clipped()
+        .sheet(isPresented: $showEventsSheet) {
+            CalendarEventSheet(events: selectedDayEvents)
+        }
         // Load calendar events whenever month/year changes
         .task(id: "\(store.currentYear)-\(store.currentMonth)") {
             await loadMonthEvents()
@@ -219,6 +243,39 @@ struct MonthPaperView: View {
         }
     }
 
+    // MARK: - Event tap overlay
+
+    /// A fully transparent layer above the canvas with invisible buttons
+    /// positioned over each day's event-dot area.
+    private var eventTapOverlay: some View {
+        let cw = monthFillGrid.cellWidth
+        let ch = monthFillGrid.cellHeight
+        let ox = monthFillGrid.originX
+        let oy = gridOriginY
+        let dotAreaHeight: CGFloat = 20
+
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(calendarMonth.weeks.enumerated()), id: \.offset) { rowIdx, week in
+                ForEach(Array(week.days.enumerated()), id: \.element.id) { colIdx, day in
+                    let events = eventsForDay(day)
+                    if !events.isEmpty && day.isInMonth {
+                        Button {
+                            selectedDayEvents = events
+                            showEventsSheet   = true
+                        } label: {
+                            Color.clear
+                        }
+                        .frame(width: cw, height: dotAreaHeight)
+                        .offset(
+                            x: ox + CGFloat(colIdx) * cw,
+                            y: oy + CGFloat(rowIdx) * ch + ch - dotAreaHeight)
+                    }
+                }
+            }
+        }
+        .frame(width: paperWidth, height: paperHeight)
+    }
+
     // MARK: - Helpers
 
     private func isTodayDay(_ day: CalendarDay) -> Bool {
@@ -247,5 +304,68 @@ struct MonthPaperView: View {
             dict[key, default: []].append(event)
         }
         monthEvents = dict
+    }
+}
+
+// MARK: - PreferenceKey for grid origin measurement
+
+private struct CalendarGridOriginYKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+// MARK: - Event detail sheet
+
+struct CalendarEventSheet: View {
+    let events: [EKEvent]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            List {
+                ForEach(events, id: \.eventIdentifier) { event in
+                    HStack(alignment: .top, spacing: 12) {
+                        Circle()
+                            .fill(Color(cgColor: event.calendar.cgColor))
+                            .frame(width: 10, height: 10)
+                            .padding(.top, 4)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(event.title ?? "Untitled")
+                                .font(.body)
+                            if event.isAllDay {
+                                Text("All Day")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text(timeRange(event))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(event.calendar.title)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .navigationTitle("Events")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func timeRange(_ event: EKEvent) -> String {
+        let fmt = DateFormatter()
+        fmt.timeStyle = .short
+        fmt.dateStyle = .none
+        return "\(fmt.string(from: event.startDate)) – \(fmt.string(from: event.endDate))"
     }
 }

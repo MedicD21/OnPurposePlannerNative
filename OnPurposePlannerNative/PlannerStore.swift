@@ -290,6 +290,13 @@ class PlannerStore: ObservableObject {
 
     @Published var fillModeActive = false
 
+    /// Reference to the currently-active PKCanvasView so the toolbar can
+    /// trigger undo/redo on its UndoManager.
+    weak var activeCanvas: PKCanvasView?
+
+    func undoLastAction() { activeCanvas?.undoManager?.undo() }
+    func redoLastAction()  { activeCanvas?.undoManager?.redo() }
+
     // MARK: - Fill Image Persistence
 
     private var fillImagesDirectory: URL {
@@ -305,10 +312,13 @@ class PlannerStore: ObservableObject {
         return UIImage(data: data)
     }
 
-    func saveFillImage(_ image: UIImage, forPageId pageId: String) {
+    /// Pass nil to clear the fill for a page (used by undo).
+    func saveFillImage(_ image: UIImage?, forPageId pageId: String) {
         let url = fillImagesDirectory.appendingPathComponent("\(pageId).png")
-        if let data = image.pngData() {
+        if let image, let data = image.pngData() {
             try? data.write(to: url, options: .atomic)
+        } else {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 

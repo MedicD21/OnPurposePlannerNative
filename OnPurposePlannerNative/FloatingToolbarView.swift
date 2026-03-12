@@ -91,13 +91,26 @@ struct FloatingToolbarView: View {
                     showDocumentPicker = true
                 }
 
-                // Paint bucket fill
+                // Paint bucket fill (month view only)
                 iconButton(
-                    systemImage: "paintbucket",
-                    help: "Fill color",
+                    systemImage: "paintpalette.fill",
+                    help: "Fill color (month view)",
                     isActive: store.fillModeActive
                 ) {
                     store.fillModeActive.toggle()
+                }
+            }
+            .padding(.vertical, 8)
+
+            Divider().frame(width: 44)
+
+            // Undo / Redo
+            VStack(spacing: 4) {
+                iconButton(systemImage: "arrow.uturn.backward", help: "Undo") {
+                    store.undoLastAction()
+                }
+                iconButton(systemImage: "arrow.uturn.forward", help: "Redo") {
+                    store.redoLastAction()
                 }
             }
             .padding(.vertical, 8)
