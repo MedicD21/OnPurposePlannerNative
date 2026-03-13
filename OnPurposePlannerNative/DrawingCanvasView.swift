@@ -62,6 +62,9 @@ struct DrawingCanvasView: UIViewRepresentable {
         canvas.isOpaque         = false
         canvas.drawing          = store.drawing(forPageId: pageId)
         canvas.delegate         = context.coordinator
+        // Disable PKCanvasView's internal pan gesture (it extends UIScrollView) so that
+        // finger swipes propagate to the parent scroll view's navigation gesture recognizers.
+        canvas.panGestureRecognizer.isEnabled = false
         container.addSubview(canvas)
 
         let previewView = UIView(frame: container.bounds)
@@ -154,6 +157,7 @@ struct DrawingCanvasView: UIViewRepresentable {
         private var liveStrokePoints: [CGPoint] = []
         private var previewedShape: RecognizedShape?
         private var pendingHeldShape: RecognizedShape?
+        private var previewAnchorLocation: CGPoint = .zero
         private var toolInteractionActive = false
 
         init(pageId: String, store: PlannerStore, fillInset: CGFloat, fillOpacity: CGFloat) {
@@ -186,6 +190,7 @@ struct DrawingCanvasView: UIViewRepresentable {
             liveStrokePoints.removeAll(keepingCapacity: true)
             previewedShape = nil
             pendingHeldShape = nil
+            previewAnchorLocation = .zero
             livePreviewTimer?.invalidate()
             livePreviewTimer = nil
             hideShapePreview()
@@ -298,9 +303,15 @@ struct DrawingCanvasView: UIViewRepresentable {
             case .changed:
                 recordLivePoint(location)
                 if previewedShape != nil {
-                    hideShapePreview()
-                    previewedShape = nil
-                    pendingHeldShape = nil
+                    // Only dismiss the preview when the pencil moves significantly away from
+                    // where it was when the preview appeared — ignore normal hold jitter.
+                    let dist = hypot(location.x - previewAnchorLocation.x,
+                                     location.y - previewAnchorLocation.y)
+                    if dist > 8 {
+                        hideShapePreview()
+                        previewedShape = nil
+                        pendingHeldShape = nil
+                    }
                 }
                 scheduleLivePreview()
 
@@ -355,13 +366,15 @@ struct DrawingCanvasView: UIViewRepresentable {
 
         private func evaluateLiveShapePreview() {
             guard toolInteractionActive,
+                  previewedShape == nil,          // already showing — don't re-trigger
                   let canvas,
                   let inkTool = canvas.tool as? PKInkingTool,
-                  let shape = ShapeRecognizer.recognize(points: liveStrokePoints, requireHold: false)
+                  let shape = ShapeRecognizer.recognize(points: liveStrokePoints, requireHold: true)
             else { return }
 
             previewedShape = shape
             pendingHeldShape = shape
+            previewAnchorLocation = liveStrokePoints.last ?? .zero
             showShapePreview(
                 shape,
                 inkColor: inkTool.color,
