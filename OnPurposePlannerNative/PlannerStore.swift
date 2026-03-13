@@ -111,6 +111,10 @@ class PlannerStore: NSObject, ObservableObject, PKToolPickerObserver {
         }
     }
 
+    var planningSpreadPageId: String {
+        "y\(currentYear)-month-\(currentMonth)-planning-spread"
+    }
+
     // MARK: - Drawing Persistence
 
     private var drawingsCache: [String: PKDrawing] = [:]
@@ -122,11 +126,50 @@ class PlannerStore: NSObject, ObservableObject, PKToolPickerObserver {
         return dir
     }
 
+    private func drawingURL(forPageId pageId: String) -> URL {
+        drawingsDirectory.appendingPathComponent("\(pageId).drawing")
+    }
+
+    private func persistedDrawing(forPageId pageId: String) -> PKDrawing? {
+        let url = drawingURL(forPageId: pageId)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? PKDrawing(data: data)
+    }
+
+    private func drawingExists(forPageId pageId: String) -> Bool {
+        FileManager.default.fileExists(atPath: drawingURL(forPageId: pageId).path)
+    }
+
+    private func migrateLegacyPlanningDrawingIfNeeded(forPageId pageId: String) {
+        let suffix = "-planning-spread"
+        guard pageId.hasSuffix(suffix), !drawingExists(forPageId: pageId) else { return }
+
+        let baseId = String(pageId.dropLast("-spread".count))
+        let leftId = "\(baseId)-left"
+        let rightId = "\(baseId)-right"
+
+        guard drawingExists(forPageId: leftId) || drawingExists(forPageId: rightId) else { return }
+
+        var combined = PKDrawing()
+        if let leftDrawing = persistedDrawing(forPageId: leftId) {
+            combined.append(leftDrawing)
+        }
+        if let rightDrawing = persistedDrawing(forPageId: rightId) {
+            let shiftedRight = rightDrawing.transformed(
+                using: CGAffineTransform(translationX: PlannerTheme.leftPaperWidth + 1, y: 0)
+            )
+            combined.append(shiftedRight)
+        }
+
+        guard !combined.strokes.isEmpty else { return }
+        saveDrawing(combined, forPageId: pageId)
+    }
+
     func drawing(forPageId pageId: String) -> PKDrawing {
         if let cached = drawingsCache[pageId] { return cached }
-        let url = drawingsDirectory.appendingPathComponent("\(pageId).drawing")
-        if let data    = try? Data(contentsOf: url),
-           let drawing = try? PKDrawing(data: data) {
+        migrateLegacyPlanningDrawingIfNeeded(forPageId: pageId)
+        if let cached = drawingsCache[pageId] { return cached }
+        if let drawing = persistedDrawing(forPageId: pageId) {
             drawingsCache[pageId] = drawing
             return drawing
         }
@@ -135,7 +178,7 @@ class PlannerStore: NSObject, ObservableObject, PKToolPickerObserver {
 
     func saveDrawing(_ drawing: PKDrawing, forPageId pageId: String) {
         drawingsCache[pageId] = drawing
-        let url  = drawingsDirectory.appendingPathComponent("\(pageId).drawing")
+        let url  = drawingURL(forPageId: pageId)
         let data = drawing.dataRepresentation()
         try? data.write(to: url, options: .atomic)
     }

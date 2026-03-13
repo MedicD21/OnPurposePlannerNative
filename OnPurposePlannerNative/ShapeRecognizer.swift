@@ -5,6 +5,7 @@ import CoreGraphics
 
 enum RecognizedShape {
     case line(from: CGPoint, to: CGPoint)
+    case arrow(from: CGPoint, tip: CGPoint, wing1: CGPoint, wing2: CGPoint)
     case circle(center: CGPoint, radius: CGFloat)
     case rectangle(minX: CGFloat, minY: CGFloat, maxX: CGFloat, maxY: CGFloat)
     case triangle(p1: CGPoint, p2: CGPoint, p3: CGPoint)
@@ -18,14 +19,18 @@ struct ShapeRecognizer {
 
     /// Returns a recognized shape if the stroke ended with a held pause, nil otherwise.
     static func recognize(_ stroke: PKStroke) -> RecognizedShape? {
-        let pts = collectPoints(stroke)
-        guard pts.count >= 10 else { return nil }
-        guard wasHeld(pts)        else { return nil }
+        recognize(points: collectPoints(stroke), requireHold: true)
+    }
 
-        if let s = tryLine(pts)       { return s }
-        if let s = tryCircle(pts)     { return s }
-        if let s = tryRectangle(pts)  { return s }
-        if let s = tryTriangle(pts)   { return s }
+    static func recognize(points: [CGPoint], requireHold: Bool) -> RecognizedShape? {
+        guard points.count >= 10 else { return nil }
+        guard !requireHold || wasHeld(points) else { return nil }
+
+        if let s = tryArrow(points)      { return s }
+        if let s = tryLine(points)       { return s }
+        if let s = tryCircle(points)     { return s }
+        if let s = tryRectangle(points)  { return s }
+        if let s = tryTriangle(points)   { return s }
         return nil
     }
 
@@ -34,6 +39,13 @@ struct ShapeRecognizer {
         switch shape {
         case .line(let a, let b):
             return [stroke(through: lerp(a, b, steps: 40), template: template)]
+
+        case .arrow(let from, let tip, let wing1, let wing2):
+            return [
+                stroke(through: lerp(from, tip, steps: 44), template: template),
+                stroke(through: lerp(tip, wing1, steps: 18), template: template),
+                stroke(through: lerp(tip, wing2, steps: 18), template: template)
+            ]
 
         case .circle(let center, let radius):
             let pts = (0...80).map { i -> CGPoint in
@@ -69,6 +81,14 @@ struct ShapeRecognizer {
             path.move(to: a)
             path.addLine(to: b)
 
+        case .arrow(let from, let tip, let wing1, let wing2):
+            path.move(to: from)
+            path.addLine(to: tip)
+            path.move(to: tip)
+            path.addLine(to: wing1)
+            path.move(to: tip)
+            path.addLine(to: wing2)
+
         case .circle(let center, let radius):
             path.addEllipse(in: CGRect(
                 x: center.x - radius,
@@ -88,6 +108,10 @@ struct ShapeRecognizer {
         }
 
         return path
+    }
+
+    static func previewFillColor(for shape: RecognizedShape, inkColor: UIColor) -> UIColor {
+        .clear
     }
 
     static func averageStrokeWidth(_ stroke: PKStroke) -> CGFloat {
@@ -124,6 +148,64 @@ struct ShapeRecognizer {
     }
 
     // MARK: - Shape classifiers
+
+    private static func tryArrow(_ pts: [CGPoint]) -> RecognizedShape? {
+        guard pts.count >= 20 else { return nil }
+        guard let start = pts.first else { return nil }
+
+        let tipIndex = pts.indices.max {
+            hypot(pts[$0].x - start.x, pts[$0].y - start.y)
+            < hypot(pts[$1].x - start.x, pts[$1].y - start.y)
+        } ?? 0
+
+        guard tipIndex > pts.count / 5, tipIndex < pts.count - 8 else { return nil }
+
+        let tip = pts[tipIndex]
+        let shaftLength = hypot(tip.x - start.x, tip.y - start.y)
+        guard shaftLength > 60 else { return nil }
+
+        let shaftPoints = Array(pts[...tipIndex])
+        let shaftDeviation = shaftPoints.map { perpDist($0, a: start, b: tip) }.max() ?? 0
+        guard shaftDeviation < shaftLength * 0.12 else { return nil }
+
+        let tail = Array(pts[tipIndex...])
+        let distances = tail.map { hypot($0.x - tip.x, $0.y - tip.y) }
+        let wingMin = max(16, shaftLength * 0.08)
+
+        guard let firstPeak = firstTailPeak(in: distances, minimumHeight: wingMin) else { return nil }
+        guard let valley = distances[firstPeak...].indices.dropFirst().first(where: {
+            distances[$0] < wingMin * 0.45
+        }) else { return nil }
+
+        let secondRange = Array((valley + 1)..<distances.count)
+        guard let secondPeak = secondRange.max(by: { distances[$0] < distances[$1] }),
+              distances[secondPeak] >= wingMin else { return nil }
+
+        let wing1 = tail[firstPeak]
+        let wing2 = tail[secondPeak]
+        let wing1Length = hypot(wing1.x - tip.x, wing1.y - tip.y)
+        let wing2Length = hypot(wing2.x - tip.x, wing2.y - tip.y)
+        guard wing1Length < shaftLength * 0.45, wing2Length < shaftLength * 0.45 else { return nil }
+
+        let backward = normalized(CGPoint(x: start.x - tip.x, y: start.y - tip.y))
+        let dir1 = normalized(CGPoint(x: wing1.x - tip.x, y: wing1.y - tip.y))
+        let dir2 = normalized(CGPoint(x: wing2.x - tip.x, y: wing2.y - tip.y))
+        guard magnitude(backward) > 0, magnitude(dir1) > 0, magnitude(dir2) > 0 else { return nil }
+
+        let backwardDot1 = dot(dir1, backward)
+        let backwardDot2 = dot(dir2, backward)
+        guard backwardDot1 > 0.35, backwardDot2 > 0.35 else { return nil }
+
+        let cross1 = cross(backward, dir1)
+        let cross2 = cross(backward, dir2)
+        guard cross1 * cross2 < 0 else { return nil }
+
+        let angle1 = angleBetween(backward, dir1)
+        let angle2 = angleBetween(backward, dir2)
+        guard (18...78).contains(angle1), (18...78).contains(angle2) else { return nil }
+
+        return .arrow(from: start, tip: tip, wing1: wing1, wing2: wing2)
+    }
 
     private static func tryLine(_ pts: [CGPoint]) -> RecognizedShape? {
         guard let a = pts.first, let b = pts.last else { return nil }
@@ -214,11 +296,59 @@ struct ShapeRecognizer {
         return acos(max(-1, min(1, dot / mag))) * 180 / .pi
     }
 
+    private static func angleBetween(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        let mag = magnitude(a) * magnitude(b)
+        guard mag > 0 else { return 180 }
+        return acos(max(-1, min(1, dot(a, b) / mag))) * 180 / .pi
+    }
+
     private static func lerp(_ a: CGPoint, _ b: CGPoint, steps: Int) -> [CGPoint] {
         (0...steps).map { i in
             let t = CGFloat(i) / CGFloat(steps)
             return CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
         }
+    }
+
+    static func rawPreviewPath(through points: [CGPoint]) -> CGPath {
+        let path = CGMutablePath()
+        guard let first = points.first else { return path }
+        path.move(to: first)
+        for point in points.dropFirst() {
+            path.addLine(to: point)
+        }
+        return path
+    }
+
+    private static func firstTailPeak(in values: [CGFloat], minimumHeight: CGFloat) -> Int? {
+        guard values.count >= 5 else { return nil }
+
+        for index in 1..<(values.count - 2) {
+            if values[index] > minimumHeight,
+               values[index] >= values[index - 1],
+               values[index] >= values[index + 1] {
+                return index
+            }
+        }
+
+        return nil
+    }
+
+    private static func normalized(_ point: CGPoint) -> CGPoint {
+        let len = magnitude(point)
+        guard len > 0 else { return .zero }
+        return CGPoint(x: point.x / len, y: point.y / len)
+    }
+
+    private static func magnitude(_ point: CGPoint) -> CGFloat {
+        hypot(point.x, point.y)
+    }
+
+    private static func dot(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        a.x * b.x + a.y * b.y
+    }
+
+    private static func cross(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        a.x * b.y - a.y * b.x
     }
 
     // MARK: - Stroke builder

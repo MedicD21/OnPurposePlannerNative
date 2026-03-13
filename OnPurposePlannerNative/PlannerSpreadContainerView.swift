@@ -1,81 +1,6 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Two-finger swipe gesture recognizer
-
-final class TwoFingerSwipeGestureRecognizer: UIGestureRecognizer {
-    enum Direction { case left, right, up, down }
-    var recognizedDirection: Direction?
-    private var startLocations: [UITouch: CGPoint] = [:]
-    private let minimumDistance: CGFloat = 50
-
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-        super.touchesBegan(touches, with: event)
-        for touch in touches {
-            startLocations[touch] = touch.location(in: view)
-        }
-        if (event.allTouches?.count ?? 0) > 2 {
-            state = .failed
-        }
-    }
-
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-        super.touchesMoved(touches, with: event)
-        guard let allTouches = event.allTouches, allTouches.count == 2 else {
-            state = .failed
-            return
-        }
-        guard state != .failed else { return }
-
-        let touchArray = Array(allTouches)
-        guard
-            let start0 = startLocations[touchArray[0]],
-            let start1 = startLocations[touchArray[1]]
-        else { return }
-
-        let current0 = touchArray[0].location(in: view)
-        let current1 = touchArray[1].location(in: view)
-
-        let dx0 = current0.x - start0.x
-        let dy0 = current0.y - start0.y
-        let dx1 = current1.x - start1.x
-        let dy1 = current1.y - start1.y
-
-        // Both fingers must move in the same general direction
-        let avgDx = (dx0 + dx1) / 2
-        let avgDy = (dy0 + dy1) / 2
-
-        let totalDist = sqrt(avgDx * avgDx + avgDy * avgDy)
-        guard totalDist >= minimumDistance else { return }
-
-        // Dominant axis
-        if abs(avgDx) > abs(avgDy) {
-            recognizedDirection = avgDx < 0 ? .left : .right
-        } else {
-            recognizedDirection = avgDy < 0 ? .up : .down
-        }
-        state = .recognized
-    }
-
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
-        super.touchesEnded(touches, with: event)
-        startLocations.removeAll()
-        if state == .possible { state = .failed }
-    }
-
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
-        super.touchesCancelled(touches, with: event)
-        startLocations.removeAll()
-        state = .cancelled
-    }
-
-    override func reset() {
-        super.reset()
-        recognizedDirection = nil
-        startLocations.removeAll()
-    }
-}
-
 // MARK: - Spread Container
 
 struct PlannerSpreadContainerView: UIViewRepresentable {
@@ -132,18 +57,24 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
             context.coordinator.centerContent(scrollView)
         }
 
-        // Two-finger swipe recognizer (custom, for same-direction swipe navigation)
-        let swipe = TwoFingerSwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTwoFingerSwipe(_:)))
-        swipe.delegate = context.coordinator
-        scrollView.addGestureRecognizer(swipe)
-
-        // Two-finger pan: vertical on month paper → months, horizontal on week paper → weeks
-        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTwoFingerPan(_:)))
-        pan.minimumNumberOfTouches = 2
-        pan.maximumNumberOfTouches = 2
-        pan.delegate = context.coordinator
-        scrollView.addGestureRecognizer(pan)
-        context.coordinator.navPanRecognizer = pan
+        // One-finger swipe navigation.
+        for direction in [
+            UISwipeGestureRecognizer.Direction.up,
+            .down,
+            .left,
+            .right
+        ] {
+            let swipe = UISwipeGestureRecognizer(
+                target: context.coordinator,
+                action: #selector(Coordinator.handleNavigationSwipe(_:))
+            )
+            swipe.direction = direction
+            swipe.numberOfTouchesRequired = 1
+            swipe.delegate = context.coordinator
+            scrollView.addGestureRecognizer(swipe)
+            context.coordinator.navigationRecognizers.append(swipe)
+            scrollView.panGestureRecognizer.require(toFail: swipe)
+        }
 
         // One-finger pan exclusively for note-header dragging.
         // scrollView.panGestureRecognizer requires this to fail first so the
@@ -187,7 +118,7 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
         var store: PlannerStore
         weak var scrollView:        UIScrollView?
         var hostingController:      UIHostingController<SpreadHostView>?
-        weak var navPanRecognizer:   UIPanGestureRecognizer?   // 2-finger nav pan
+        var navigationRecognizers: [UISwipeGestureRecognizer] = []
         weak var noteDragRecognizer: UIPanGestureRecognizer?  // 1-finger note drag
         weak var tabDragRecognizer:    UIPanGestureRecognizer? // 1-finger tab marker drag
         weak var attachmentRecognizer: UIPanGestureRecognizer? // 1-finger attachment move/resize
@@ -210,9 +141,6 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
         private var attachStartSize:      CGSize  = .zero
         private let resizeHandleSize:     CGFloat = 44
 
-        // Nav pan state
-        private var navPanStartLoc: CGPoint = .zero
-
         init(store: PlannerStore) { self.store = store }
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? { hostingController?.view }
@@ -226,48 +154,21 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
             scrollView.contentInset = UIEdgeInsets(top: offsetY, left: offsetX, bottom: offsetY, right: offsetX)
         }
 
-        // MARK: - Two-finger pan navigation (left/right paper zones)
+        // MARK: - One-finger swipe navigation
 
-        @objc func handleTwoFingerPan(_ recognizer: UIPanGestureRecognizer) {
-            guard let scrollView  = scrollView,
-                  let contentView = hostingController?.view else { return }
-            switch recognizer.state {
-            case .began:
-                navPanStartLoc = recognizer.location(in: scrollView)
-            case .ended, .cancelled:
-                let end = recognizer.location(in: scrollView)
-                let dx  = end.x - navPanStartLoc.x
-                let dy  = end.y - navPanStartLoc.y
-                guard sqrt(dx*dx + dy*dy) > 60 else { return }
-                let contentStart = scrollView.convert(navPanStartLoc, to: contentView)
-                let isLeftPaper  = contentStart.x < PlannerTheme.leftPaperWidth
-                DispatchQueue.main.async {
-                    if isLeftPaper {
-                        guard abs(dy) > abs(dx) else { return }
-                        if dy < 0 { self.store.goToNextMonth() }
-                        else      { self.store.goToPreviousMonth() }
-                    } else {
-                        guard abs(dx) > abs(dy),
-                              self.store.activeSpread == .monthWeek else { return }
-                        if dx < 0 { self.store.goToNextWeek() }
-                        else      { self.store.goToPreviousWeek() }
-                    }
-                }
-            default: break
-            }
-        }
-
-        // MARK: - Two-finger same-direction swipe (TwoFingerSwipeGestureRecognizer)
-
-        @objc func handleTwoFingerSwipe(_ recognizer: TwoFingerSwipeGestureRecognizer) {
-            guard recognizer.state == .recognized else { return }
+        @objc func handleNavigationSwipe(_ recognizer: UISwipeGestureRecognizer) {
             DispatchQueue.main.async {
-                switch recognizer.recognizedDirection {
-                case .left:  if self.store.activeSpread == .monthWeek { self.store.goToNextWeek() }
-                case .right: if self.store.activeSpread == .monthWeek { self.store.goToPreviousWeek() }
-                case .up:    self.store.goToNextMonth()
-                case .down:  self.store.goToPreviousMonth()
-                case .none:  break
+                switch recognizer.direction {
+                case .left:
+                    if self.store.activeSpread == .monthWeek { self.store.goToNextWeek() }
+                case .right:
+                    if self.store.activeSpread == .monthWeek { self.store.goToPreviousWeek() }
+                case .up:
+                    self.store.goToNextMonth()
+                case .down:
+                    self.store.goToPreviousMonth()
+                default:
+                    break
                 }
             }
         }
@@ -408,6 +309,36 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
 
             let loc = scrollView.convert(gestureRecognizer.location(in: scrollView), to: contentView)
 
+            if navigationRecognizers.contains(where: { $0 === gestureRecognizer }) {
+                let isZoomedIn = scrollView.zoomScale > (scrollView.minimumZoomScale * 1.05)
+                guard !isZoomedIn else { return false }
+
+                let noteHit = store.stickyNotes
+                    .filter { $0.pageId == store.currentSpreadId }
+                    .contains { note in
+                        CGRect(x: note.x, y: note.y,
+                               width: note.displayWidth, height: note.displayHeight)
+                            .contains(loc)
+                    }
+                if noteHit { return false }
+
+                let tabHit = store.tabMarkers
+                    .filter { $0.pageId == store.currentSpreadId }
+                    .contains { tab in
+                        CGRect(x: tab.x, y: tab.y, width: TabMarker.width, height: TabMarker.height)
+                            .contains(loc)
+                    }
+                if tabHit { return false }
+
+                let attachmentHit = store.attachments
+                    .filter { $0.pageId == store.currentSpreadId }
+                    .contains { att in
+                        CGRect(x: att.x, y: att.y, width: att.width, height: att.height)
+                            .contains(loc)
+                    }
+                return !attachmentHit
+            }
+
             if gestureRecognizer === noteDragRecognizer {
                 return store.stickyNotes
                     .filter { $0.pageId == store.currentSpreadId }
@@ -443,6 +374,10 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
         ) -> Bool {
+            if navigationRecognizers.contains(where: { $0 === gestureRecognizer || $0 === other }) {
+                return false
+            }
+
             // Note drag and attachment drag are exclusive — never simultaneous
             if gestureRecognizer === noteDragRecognizer   || other === noteDragRecognizer   { return false }
             if gestureRecognizer === tabDragRecognizer    || other === tabDragRecognizer    { return false }

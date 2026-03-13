@@ -82,10 +82,15 @@ struct DrawingCanvasView: UIViewRepresentable {
         context.coordinator.fillView  = fillView
         context.coordinator.monthGrid = monthGrid
         context.coordinator.previewLayer = previewLayer
+        context.coordinator.drawingGestureRecognizer = canvas.drawingGestureRecognizer
 
         fillView.image = store.fillImage(forPageId: pageId)
 
         store.activateCanvas(canvas)
+        canvas.drawingGestureRecognizer.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.handleDrawingGesture(_:))
+        )
 
         // Tap gesture for paint-bucket fill — only registered when a grid is provided
         if monthGrid != nil {
@@ -115,6 +120,10 @@ struct DrawingCanvasView: UIViewRepresentable {
 
     static func dismantleUIView(_ container: UIView, coordinator: Coordinator) {
         coordinator.clearStrokeProcessing()
+        coordinator.drawingGestureRecognizer?.removeTarget(
+            coordinator,
+            action: #selector(Coordinator.handleDrawingGesture(_:))
+        )
         if let canvas = coordinator.canvas {
             coordinator.store.toolPicker.removeObserver(canvas)
             coordinator.store.unregisterCanvas(canvas)
@@ -122,6 +131,7 @@ struct DrawingCanvasView: UIViewRepresentable {
         coordinator.canvas = nil
         coordinator.fillView = nil
         coordinator.previewLayer = nil
+        coordinator.drawingGestureRecognizer = nil
     }
 
     // MARK: - Coordinator
@@ -132,6 +142,7 @@ struct DrawingCanvasView: UIViewRepresentable {
         var monthGrid: MonthFillGrid?
         weak var canvas:   PKCanvasView?
         weak var fillView: UIImageView?
+        weak var drawingGestureRecognizer: UIGestureRecognizer?
         var previewLayer: CAShapeLayer?
         private let fillInset: CGFloat
         private let fillOpacity: CGFloat
@@ -139,6 +150,11 @@ struct DrawingCanvasView: UIViewRepresentable {
         private var isApplyingDrawingMutation = false
         private var processingTimer: Timer?
         private var shapeCommitTimer: Timer?
+        private var livePreviewTimer: Timer?
+        private var liveStrokePoints: [CGPoint] = []
+        private var previewedShape: RecognizedShape?
+        private var pendingHeldShape: RecognizedShape?
+        private var toolInteractionActive = false
 
         init(pageId: String, store: PlannerStore, fillInset: CGFloat, fillOpacity: CGFloat) {
             self.pageId = pageId
@@ -150,10 +166,39 @@ struct DrawingCanvasView: UIViewRepresentable {
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             store.saveDrawing(canvasView.drawing, forPageId: pageId)
             guard !isApplyingDrawingMutation else { return }
+
+             if let pendingHeldShape,
+                let lastStroke = canvasView.drawing.strokes.last {
+                self.pendingHeldShape = nil
+                commitRecognizedShape(pendingHeldShape, template: lastStroke, in: canvasView)
+                return
+            }
+
             clearStrokeProcessing()
             processingTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self, weak canvasView] _ in
                 guard let self, let canvasView else { return }
                 self.handlePostStrokeProcessing(in: canvasView)
+            }
+        }
+
+        func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
+            toolInteractionActive = true
+            liveStrokePoints.removeAll(keepingCapacity: true)
+            previewedShape = nil
+            pendingHeldShape = nil
+            livePreviewTimer?.invalidate()
+            livePreviewTimer = nil
+            hideShapePreview()
+        }
+
+        func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
+            toolInteractionActive = false
+            livePreviewTimer?.invalidate()
+            livePreviewTimer = nil
+            if previewedShape == nil {
+                hideShapePreview()
+            } else {
+                pendingHeldShape = previewedShape
             }
         }
 
@@ -164,6 +209,9 @@ struct DrawingCanvasView: UIViewRepresentable {
             processingTimer = nil
             shapeCommitTimer?.invalidate()
             shapeCommitTimer = nil
+            livePreviewTimer?.invalidate()
+            livePreviewTimer = nil
+            previewedShape = nil
             hideShapePreview()
         }
 
@@ -178,7 +226,7 @@ struct DrawingCanvasView: UIViewRepresentable {
             guard let shape = ShapeRecognizer.recognize(lastStroke) else { return }
             showShapePreview(shape, template: lastStroke)
 
-            shapeCommitTimer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: false) { [weak self, weak canvas] _ in
+            shapeCommitTimer = Timer.scheduledTimer(withTimeInterval: 0.28, repeats: false) { [weak self, weak canvas] _ in
                 guard let self, let canvas else { return }
                 self.commitRecognizedShape(shape, template: lastStroke, in: canvas)
             }
@@ -205,6 +253,7 @@ struct DrawingCanvasView: UIViewRepresentable {
 
         private func commitRecognizedShape(_ shape: RecognizedShape, template: PKStroke, in canvas: PKCanvasView) {
             hideShapePreview()
+            previewedShape = nil
 
             var drawing = canvas.drawing
             guard !drawing.strokes.isEmpty else { return }
@@ -230,20 +279,147 @@ struct DrawingCanvasView: UIViewRepresentable {
             canvas.undoManager?.setActionName(actionName)
         }
 
+        @objc func handleDrawingGesture(_ recognizer: UIGestureRecognizer) {
+            guard !store.fillModeActive,
+                  let canvas,
+                  let inkTool = canvas.tool as? PKInkingTool else { return }
+
+            let location = recognizer.location(in: canvas)
+
+            switch recognizer.state {
+            case .began:
+                toolInteractionActive = true
+                liveStrokePoints = [location]
+                previewedShape = nil
+                pendingHeldShape = nil
+                hideShapePreview()
+                scheduleLivePreview()
+
+            case .changed:
+                recordLivePoint(location)
+                if previewedShape != nil {
+                    hideShapePreview()
+                    previewedShape = nil
+                    pendingHeldShape = nil
+                }
+                scheduleLivePreview()
+
+            case .ended:
+                recordLivePoint(location)
+                if let shape = previewedShape {
+                    showShapePreview(
+                        shape,
+                        inkColor: inkTool.color,
+                        lineWidth: inkTool.width,
+                        fromPath: ShapeRecognizer.rawPreviewPath(through: liveStrokePoints)
+                    )
+                    pendingHeldShape = shape
+                }
+                toolInteractionActive = false
+                livePreviewTimer?.invalidate()
+                livePreviewTimer = nil
+
+            case .cancelled, .failed:
+                toolInteractionActive = false
+                livePreviewTimer?.invalidate()
+                livePreviewTimer = nil
+                liveStrokePoints.removeAll(keepingCapacity: true)
+                previewedShape = nil
+                pendingHeldShape = nil
+                hideShapePreview()
+
+            default:
+                break
+            }
+        }
+
+        private func recordLivePoint(_ point: CGPoint) {
+            guard let last = liveStrokePoints.last else {
+                liveStrokePoints = [point]
+                return
+            }
+
+            if hypot(point.x - last.x, point.y - last.y) >= 1 {
+                liveStrokePoints.append(point)
+            }
+        }
+
+        private func scheduleLivePreview() {
+            livePreviewTimer?.invalidate()
+            guard liveStrokePoints.count >= 10 else { return }
+
+            livePreviewTimer = Timer.scheduledTimer(withTimeInterval: 0.16, repeats: false) { [weak self] _ in
+                self?.evaluateLiveShapePreview()
+            }
+        }
+
+        private func evaluateLiveShapePreview() {
+            guard toolInteractionActive,
+                  let canvas,
+                  let inkTool = canvas.tool as? PKInkingTool,
+                  let shape = ShapeRecognizer.recognize(points: liveStrokePoints, requireHold: false)
+            else { return }
+
+            previewedShape = shape
+            pendingHeldShape = shape
+            showShapePreview(
+                shape,
+                inkColor: inkTool.color,
+                lineWidth: inkTool.width,
+                fromPath: ShapeRecognizer.rawPreviewPath(through: liveStrokePoints)
+            )
+        }
+
         private func showShapePreview(_ shape: RecognizedShape, template: PKStroke) {
+            showShapePreview(
+                shape,
+                inkColor: template.ink.color,
+                lineWidth: max(1.5, ShapeRecognizer.averageStrokeWidth(template)),
+                fromPath: ShapeRecognizer.rawPreviewPath(through: collectPoints(template))
+            )
+        }
+
+        private func showShapePreview(
+            _ shape: RecognizedShape,
+            inkColor: UIColor,
+            lineWidth: CGFloat,
+            fromPath: CGPath
+        ) {
             guard let previewLayer else { return }
 
-            previewLayer.path = ShapeRecognizer.previewPath(for: shape)
-            previewLayer.strokeColor = template.ink.color.withAlphaComponent(0.85).cgColor
-            previewLayer.fillColor = UIColor.clear.cgColor
-            previewLayer.lineWidth = max(1.5, ShapeRecognizer.averageStrokeWidth(template))
-            previewLayer.lineDashPattern = [8, 5]
+            let targetPath = ShapeRecognizer.previewPath(for: shape)
+            previewLayer.removeAllAnimations()
+            previewLayer.path = targetPath
+            previewLayer.strokeColor = inkColor.cgColor
+            previewLayer.fillColor = ShapeRecognizer.previewFillColor(for: shape, inkColor: inkColor).cgColor
+            previewLayer.lineWidth = lineWidth
+            previewLayer.lineDashPattern = nil
             previewLayer.opacity = 1
+
+            let morph = CABasicAnimation(keyPath: "path")
+            morph.fromValue = fromPath
+            morph.toValue = targetPath
+            morph.duration = 0.16
+            morph.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = previewLayer.presentation()?.opacity ?? 0
+            fade.toValue = 1
+            fade.duration = 0.08
+            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+            previewLayer.add(morph, forKey: "shapePreviewMorph")
+            previewLayer.add(fade, forKey: "shapePreviewFade")
         }
 
         private func hideShapePreview() {
+            previewLayer?.removeAllAnimations()
             previewLayer?.path = nil
             previewLayer?.opacity = 0
+        }
+
+        private func collectPoints(_ stroke: PKStroke) -> [CGPoint] {
+            stroke.path.map(\.location)
         }
 
         // MARK: - Paint bucket fill
