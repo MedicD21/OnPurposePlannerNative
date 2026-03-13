@@ -283,7 +283,7 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
                 let loc = scrollView.convert(recognizer.location(in: scrollView), to: contentView)
                 for note in store.stickyNotes where note.pageId == store.currentSpreadId {
                     let headerRect = CGRect(x: note.x, y: note.y,
-                                           width: note.width, height: StickyNote.headerHeight)
+                                           width: note.displayWidth, height: StickyNote.headerHeight)
                     if headerRect.contains(loc) {
                         draggingNoteId    = note.id
                         noteDragStartLoc    = loc
@@ -413,7 +413,7 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
                     .filter { $0.pageId == store.currentSpreadId }
                     .contains { note in
                         CGRect(x: note.x, y: note.y,
-                               width: note.width, height: StickyNote.headerHeight)
+                               width: note.displayWidth, height: StickyNote.headerHeight)
                             .contains(loc)
                     }
             }
@@ -474,7 +474,7 @@ struct SpreadHostView: View {
             // Sticky notes overlay — shows notes for current spread
             ForEach(store.stickyNotes.filter { $0.pageId == store.currentSpreadId }) { note in
                 StickyNoteView(store: store, noteId: note.id)
-                    .frame(width: note.width, height: note.isCollapsed ? StickyNote.headerHeight : note.height)
+                    .frame(width: note.displayWidth, height: note.displayHeight)
                     .offset(x: note.x, y: note.y)
                     .zIndex(1)
             }

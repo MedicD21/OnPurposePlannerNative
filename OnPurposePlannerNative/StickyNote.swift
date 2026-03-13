@@ -42,10 +42,14 @@ struct StickyNote: Identifiable, Codable {
     var colorKey: StickyColor
     var isCollapsed: Bool
 
-    static let headerHeight: CGFloat  = 36
-    static let defaultSize:  CGSize   = CGSize(width: 240, height: 280)
+    static let headerHeight: CGFloat = 36
+    static let collapsedSize: CGSize = CGSize(width: 136, height: 112)
+    static let defaultSize: CGSize = CGSize(width: 240, height: 280)
 
     var drawingPageId: String { "sticky-\(id.uuidString)" }
+    var displayWidth: CGFloat { isCollapsed ? Self.collapsedSize.width : width }
+    var displayHeight: CGFloat { isCollapsed ? Self.collapsedSize.height : height }
+    var bodyHeight: CGFloat { max(displayHeight - Self.headerHeight, 0) }
 
     init(id: UUID = UUID(), pageId: String, x: CGFloat = 100, y: CGFloat = 100,
          width: CGFloat = 240, height: CGFloat = 280,
