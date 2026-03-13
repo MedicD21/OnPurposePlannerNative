@@ -93,7 +93,7 @@ struct FloatingToolbarView: View {
 
                 // Paint bucket fill (month view only)
                 iconButton(
-                    systemImage: "paintpalette.fill",
+                    systemImage: "drop.fill",
                     help: "Fill color (month view)",
                     isActive: store.fillModeActive
                 ) {

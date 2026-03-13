@@ -37,8 +37,8 @@ struct TabMarker: Identifiable, Codable {
     var y: CGFloat
     var colorKey: TabColor
 
-    static let width:  CGFloat = 200
-    static let height: CGFloat = 54
+    static let width:  CGFloat = 100
+    static let height: CGFloat = 28
 
     var drawingPageId: String { "tab-\(id.uuidString)" }
 

@@ -5,29 +5,29 @@ import EventKit
 struct MonthPaperView: View {
     @ObservedObject var store: PlannerStore
 
+    private let maxVisibleEventPills = 2
+    private let eventPillTopInset: CGFloat = 30
+    private let eventPillSideInset: CGFloat = 4
+    private let eventPillHeight: CGFloat = 16
+    private let eventPillSpacing: CGFloat = 3
+
     private var calendarMonth: CalendarMonth {
         generateCalendar(year: store.currentYear, month: store.currentMonth)
     }
 
     private var paperWidth:  CGFloat { PlannerTheme.leftPaperWidth }
     private var paperHeight: CGFloat { PlannerTheme.spreadHeight }
+    private var monthPageId: String { store.pageId(for: .monthWeek, side: .left) }
 
     // Today's components for highlight
     private let today    = Date()
     private let todayCal = Calendar(identifier: .gregorian)
 
-    // Measured at runtime via PreferenceKey so fill cells align with actual layout
-    @State private var gridOriginY: CGFloat = 180
+    // Measured at runtime from the actual laid-out day cells.
+    @State private var monthCellFrames: [MonthCellPosition: CGRect] = [:]
 
-    /// Grid geometry used to clamp paint-bucket fill to individual day cells.
     private var monthFillGrid: MonthFillGrid {
-        let cw = (paperWidth - 56) / 7
-        let ch = (paperHeight - 240) / 6
-        return MonthFillGrid(
-            originX: 28,
-            originY: gridOriginY,
-            cellWidth: cw,
-            cellHeight: ch)
+        MonthFillGrid(cellFrames: monthCellFrames)
     }
 
     // Calendar events for the displayed month, keyed by "YYYY-MM-DD"
@@ -39,6 +39,8 @@ struct MonthPaperView: View {
         ZStack(alignment: .topLeading) {
             // Paper background
             PlannerTheme.paper.ignoresSafeArea()
+
+            monthFillUnderlay
 
             VStack(alignment: .leading, spacing: 0) {
                 headerRow
@@ -52,14 +54,6 @@ struct MonthPaperView: View {
                 calendarGrid
                     .padding(.horizontal, 28)
                     .padding(.top, 4)
-                    // Measure the actual Y of the grid top so fill cells are correct
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear.preference(
-                                key: CalendarGridOriginYKey.self,
-                                value: geo.frame(in: .named("monthPaper")).minY)
-                        }
-                    )
 
                 Spacer()
             }
@@ -73,13 +67,14 @@ struct MonthPaperView: View {
             )
             .frame(width: paperWidth, height: paperHeight)
 
-            // Transparent event-dot tap targets sit ABOVE the canvas so they
-            // receive finger taps even though the canvas covers the whole page.
+            // Invisible hit targets sit above the canvas so the visible pills,
+            // which are laid out inside each day cell, remain tappable.
             eventTapOverlay
+                .allowsHitTesting(!store.fillModeActive)
         }
         .coordinateSpace(name: "monthPaper")
-        .onPreferenceChange(CalendarGridOriginYKey.self) { y in
-            if y > 0 { gridOriginY = y }
+        .onPreferenceChange(MonthCellFramePreferenceKey.self) { frames in
+            monthCellFrames = frames
         }
         .frame(width: paperWidth, height: paperHeight)
         .clipped()
@@ -92,6 +87,9 @@ struct MonthPaperView: View {
         }
         // Re-load if calendar permissions or enabled IDs change
         .onChange(of: store.calendarManager.authStatus) { _, _ in
+            Task { await loadMonthEvents() }
+        }
+        .onChange(of: store.enabledCalendarIDs) { _, _ in
             Task { await loadMonthEvents() }
         }
     }
@@ -177,10 +175,16 @@ struct MonthPaperView: View {
         let cellHeight = (paperHeight - 240) / 6
 
         return VStack(spacing: 0) {
-            ForEach(calendarMonth.weeks) { week in
+            ForEach(Array(calendarMonth.weeks.enumerated()), id: \.offset) { row, week in
                 HStack(spacing: 0) {
-                    ForEach(week.days) { day in
-                        dayCell(day: day, cellWidth: cellWidth, cellHeight: cellHeight)
+                    ForEach(Array(week.days.enumerated()), id: \.offset) { column, day in
+                        dayCell(
+                            day: day,
+                            row: row,
+                            column: column,
+                            cellWidth: cellWidth,
+                            cellHeight: cellHeight
+                        )
                     }
                 }
                 Rectangle()
@@ -190,7 +194,13 @@ struct MonthPaperView: View {
         }
     }
 
-    private func dayCell(day: CalendarDay, cellWidth: CGFloat, cellHeight: CGFloat) -> some View {
+    private func dayCell(
+        day: CalendarDay,
+        row: Int,
+        column: Int,
+        cellWidth: CGFloat,
+        cellHeight: CGFloat
+    ) -> some View {
         let isToday = isTodayDay(day)
         let dimmed  = !day.isInMonth
         let events  = eventsForDay(day)
@@ -223,57 +233,72 @@ struct MonthPaperView: View {
             }
             .padding(4)
         }
-        // Event dots at the bottom of the cell
-        .overlay(alignment: .bottom) {
+        .overlay(alignment: .topLeading) {
             if !events.isEmpty && day.isInMonth {
-                HStack(spacing: 3) {
-                    ForEach(events.prefix(3), id: \.eventIdentifier) { event in
-                        Circle()
-                            .fill(Color(cgColor: event.calendar.cgColor))
-                            .frame(width: 5, height: 5)
-                    }
-                    if events.count > 3 {
-                        Circle()
-                            .fill(PlannerTheme.line)
-                            .frame(width: 5, height: 5)
-                    }
-                }
-                .padding(.bottom, 4)
+                dayEventPills(events, maxWidth: cellWidth - (eventPillSideInset * 2))
+                    .padding(.top, eventPillTopInset)
+                    .padding(.leading, eventPillSideInset)
             }
         }
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: MonthCellFramePreferenceKey.self,
+                    value: [
+                        MonthCellPosition(row: row, column: column): geo.frame(in: .named("monthPaper"))
+                    ]
+                )
+            }
+        )
     }
 
     // MARK: - Event tap overlay
 
-    /// A fully transparent layer above the canvas with invisible buttons
-    /// positioned over each day's event-dot area.
+    /// A transparent layer above the canvas with tappable hit targets for the
+    /// event pill area in each day cell.
     private var eventTapOverlay: some View {
-        let cw = monthFillGrid.cellWidth
-        let ch = monthFillGrid.cellHeight
-        let ox = monthFillGrid.originX
-        let oy = gridOriginY
-        let dotAreaHeight: CGFloat = 20
+        let pillAreaHeight = (eventPillHeight * 3) + (eventPillSpacing * 2)
 
         return ZStack(alignment: .topLeading) {
             ForEach(Array(calendarMonth.weeks.enumerated()), id: \.offset) { rowIdx, week in
-                ForEach(Array(week.days.enumerated()), id: \.element.id) { colIdx, day in
+                ForEach(Array(week.days.enumerated()), id: \.offset) { colIdx, day in
                     let events = eventsForDay(day)
-                    if !events.isEmpty && day.isInMonth {
+                    let position = MonthCellPosition(row: rowIdx, column: colIdx)
+                    if !events.isEmpty,
+                       day.isInMonth,
+                       let frame = monthFillGrid.cellFrame(at: position) {
+                        let pillAreaWidth = max(0, frame.width - (eventPillSideInset * 2))
                         Button {
                             selectedDayEvents = events
                             showEventsSheet   = true
                         } label: {
                             Color.clear
                         }
-                        .frame(width: cw, height: dotAreaHeight)
+                        .buttonStyle(.plain)
+                        .frame(width: pillAreaWidth, height: pillAreaHeight, alignment: .topLeading)
                         .offset(
-                            x: ox + CGFloat(colIdx) * cw,
-                            y: oy + CGFloat(rowIdx) * ch + ch - dotAreaHeight)
+                            x: frame.minX + eventPillSideInset,
+                            y: frame.minY + eventPillTopInset)
                     }
                 }
             }
         }
         .frame(width: paperWidth, height: paperHeight)
+    }
+
+    private var monthFillUnderlay: some View {
+        let _ = store.fillRefreshTick
+
+        return Group {
+            if let image = store.fillImage(forPageId: monthPageId) {
+                Image(uiImage: image)
+                    .resizable()
+                    .interpolation(.none)
+                    .frame(width: paperWidth, height: paperHeight)
+            }
+        }
+        .frame(width: paperWidth, height: paperHeight)
+        .allowsHitTesting(false)
     }
 
     // MARK: - Helpers
@@ -290,8 +315,91 @@ struct MonthPaperView: View {
         return monthEvents[key] ?? []
     }
 
+    private func dayEventPills(_ events: [EKEvent], maxWidth: CGFloat) -> some View {
+        let visibleEvents = Array(events.prefix(maxVisibleEventPills))
+        let remainingCount = max(0, events.count - visibleEvents.count)
+
+        return VStack(alignment: .leading, spacing: eventPillSpacing) {
+            ForEach(visibleEvents, id: \.eventIdentifier) { event in
+                eventPill(event, maxWidth: maxWidth)
+            }
+
+            if remainingCount > 0 {
+                moreEventsPill(remainingCount: remainingCount, maxWidth: maxWidth)
+            }
+        }
+        .frame(maxWidth: maxWidth, alignment: .topLeading)
+        .contentShape(Rectangle())
+    }
+
+    private func eventPill(_ event: EKEvent, maxWidth: CGFloat) -> some View {
+        let color = Color(cgColor: event.calendar.cgColor)
+
+        return HStack(spacing: 4) {
+            Circle()
+                .fill(color)
+                .frame(width: 5, height: 5)
+
+            Text(eventTitle(event))
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(PlannerTheme.ink)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 6)
+        .frame(maxWidth: maxWidth, minHeight: eventPillHeight, alignment: .leading)
+        .background(
+            Capsule()
+                .fill(color.opacity(0.15))
+        )
+        .overlay {
+            Capsule()
+                .stroke(color.opacity(0.35), lineWidth: 0.5)
+        }
+    }
+
+    private func moreEventsPill(remainingCount: Int, maxWidth: CGFloat) -> some View {
+        Text("+\(remainingCount) more")
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(PlannerTheme.line)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .frame(maxWidth: maxWidth, minHeight: eventPillHeight, alignment: .leading)
+            .background(
+                Capsule()
+                    .fill(PlannerTheme.tab)
+            )
+            .overlay {
+                Capsule()
+                    .stroke(PlannerTheme.hairline, lineWidth: 0.5)
+            }
+    }
+
+    private func eventTitle(_ event: EKEvent) -> String {
+        let trimmed = event.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "Untitled" : trimmed
+    }
+
+    private func sortEvents(_ events: [EKEvent]) -> [EKEvent] {
+        events.sorted { lhs, rhs in
+            if lhs.isAllDay != rhs.isAllDay {
+                return lhs.isAllDay && !rhs.isAllDay
+            }
+            if lhs.startDate != rhs.startDate {
+                return lhs.startDate < rhs.startDate
+            }
+            return eventTitle(lhs).localizedCaseInsensitiveCompare(eventTitle(rhs)) == .orderedAscending
+        }
+    }
+
     private func loadMonthEvents() async {
-        guard store.calendarManager.isAuthorized else { return }
+        guard store.calendarManager.isAuthorized else {
+            monthEvents = [:]
+            return
+        }
+
         let events = store.calendarManager.events(
             for: store.currentYear,
             month: store.currentMonth,
@@ -303,16 +411,20 @@ struct MonthPaperView: View {
             let key = String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
             dict[key, default: []].append(event)
         }
-        monthEvents = dict
+        monthEvents = dict.mapValues(sortEvents)
     }
 }
 
-// MARK: - PreferenceKey for grid origin measurement
+// MARK: - PreferenceKeys
 
-private struct CalendarGridOriginYKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+private struct MonthCellFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [MonthCellPosition: CGRect] = [:]
+
+    static func reduce(
+        value: inout [MonthCellPosition: CGRect],
+        nextValue: () -> [MonthCellPosition: CGRect]
+    ) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 

@@ -13,7 +13,7 @@ enum PaperSide: String {
 }
 
 @MainActor
-class PlannerStore: ObservableObject {
+class PlannerStore: NSObject, ObservableObject, PKToolPickerObserver {
     @Published var currentYear:      Int
     @Published var currentMonth:     Int
     @Published var currentWeekIndex: Int
@@ -32,6 +32,8 @@ class PlannerStore: ObservableObject {
     //   • Tool favourites
     //   • Built-in undo / redo
     let toolPicker = PKToolPicker()
+    private(set) var lastSelectedInkColor = UIColor(PlannerTheme.defaultPalette[0])
+    private let registeredCanvases = NSHashTable<PKCanvasView>.weakObjects()
 
     // MARK: - Sticky Notes
     @Published var stickyNotes: [StickyNote] = []
@@ -55,7 +57,7 @@ class PlannerStore: ObservableObject {
 
     // MARK: - Init
 
-    init() {
+    override init() {
         let today = Date()
         let cal   = Calendar(identifier: .gregorian)
         let year  = cal.component(.year,  from: today)
@@ -75,6 +77,9 @@ class PlannerStore: ObservableObject {
             color: UIColor(PlannerTheme.defaultPalette[0]),
             width: 2.0
         )
+        lastSelectedInkColor = UIColor(PlannerTheme.defaultPalette[0])
+        super.init()
+        toolPicker.addObserver(self)
 
         loadStickyNotes()
         loadTabMarkers()
@@ -289,10 +294,41 @@ class PlannerStore: ObservableObject {
     // MARK: - Fill Mode
 
     @Published var fillModeActive = false
+    @Published private(set) var fillRefreshTick = 0
 
     /// Reference to the currently-active PKCanvasView so the toolbar can
     /// trigger undo/redo on its UndoManager.
     weak var activeCanvas: PKCanvasView?
+
+    func registerCanvas(_ canvas: PKCanvasView) {
+        if !registeredCanvases.allObjects.contains(where: { $0 === canvas }) {
+            registeredCanvases.add(canvas)
+        }
+    }
+
+    func activateCanvas(_ canvas: PKCanvasView) {
+        registerCanvas(canvas)
+        toolPicker.setVisible(true, forFirstResponder: canvas)
+        toolPicker.addObserver(canvas)
+        activeCanvas = canvas
+        DispatchQueue.main.async { canvas.becomeFirstResponder() }
+    }
+
+    func unregisterCanvas(_ canvas: PKCanvasView) {
+        registeredCanvases.remove(canvas)
+        if activeCanvas === canvas {
+            activeCanvas = nil
+            reattachToolPickerIfNeeded()
+        }
+    }
+
+    func reattachToolPickerIfNeeded() {
+        guard activeCanvas == nil else { return }
+        guard let fallback = registeredCanvases.allObjects.last(where: { $0.window != nil && !$0.isHidden }) else {
+            return
+        }
+        activateCanvas(fallback)
+    }
 
     func undoLastAction() { activeCanvas?.undoManager?.undo() }
     func redoLastAction()  { activeCanvas?.undoManager?.redo() }
@@ -320,6 +356,12 @@ class PlannerStore: ObservableObject {
         } else {
             try? FileManager.default.removeItem(at: url)
         }
+        fillRefreshTick &+= 1
+    }
+
+    func toolPickerSelectedToolDidChange(_ toolPicker: PKToolPicker) {
+        guard let inkTool = toolPicker.selectedTool as? PKInkingTool else { return }
+        lastSelectedInkColor = inkTool.color
     }
 
     // MARK: - Attachments Persistence

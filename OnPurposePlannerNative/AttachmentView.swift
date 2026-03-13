@@ -1,11 +1,13 @@
 import SwiftUI
 import UIKit
+import QuickLookThumbnailing
 
 struct AttachmentView: View {
     @ObservedObject var store: PlannerStore
     let attachmentId: UUID
 
     @State private var showControls = false
+    @State private var previewURL: URL?
 
     private var attachment: PageAttachment? {
         store.attachments.first { $0.id == attachmentId }
@@ -15,6 +17,7 @@ struct AttachmentView: View {
         if let attachment = attachment {
             attachmentContent(attachment)
                 .frame(width: attachment.width, height: attachment.height)
+                .contentShape(Rectangle())
                 // Delete button — top-right, visible only when controls shown
                 .overlay(alignment: .topTrailing) {
                     if showControls {
@@ -27,6 +30,21 @@ struct AttachmentView: View {
                                 .background(Circle().fill(Color.black.opacity(0.5)))
                         }
                         .offset(x: 8, y: -8)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .overlay(alignment: .topLeading) {
+                    if showControls,
+                       case .file(let data, let filename) = attachment.kind {
+                        Button {
+                            openFile(data: data, filename: filename)
+                        } label: {
+                            Image(systemName: "arrow.up.right.square.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.white)
+                                .background(Circle().fill(Color.black.opacity(0.5)))
+                        }
+                        .offset(x: -8, y: -8)
                         .transition(.scale.combined(with: .opacity))
                     }
                 }
@@ -46,6 +64,9 @@ struct AttachmentView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(Color.accentColor.opacity(showControls ? 0.7 : 0), lineWidth: 2)
+                )
+                .background(
+                    DocumentInteractionRepresentable(url: $previewURL)
                 )
                 .onTapGesture {
                     withAnimation(.easeInOut(duration: 0.15)) {
@@ -70,20 +91,60 @@ struct AttachmentView: View {
             }
 
         case .file(let data, let filename):
-            FileAttachmentCardView(data: data, filename: filename)
+            FileAttachmentCardView(
+                attachmentId: attachment.id,
+                data: data,
+                filename: filename
+            )
         }
+    }
+
+    private func openFile(data: Data, filename: String) {
+        let tempDir = FileManager.default.temporaryDirectory
+        let url = tempDir.appendingPathComponent("\(UUID().uuidString)-\(filename)")
+        try? data.write(to: url, options: .atomic)
+        previewURL = url
     }
 }
 
 // MARK: - File Card View
 
 struct FileAttachmentCardView: View {
+    let attachmentId: UUID
     let data: Data
     let filename: String
 
-    @State private var tempURL: URL?
+    @State private var previewImage: UIImage?
+    @State private var previewRequestID = UUID()
+
+    private static let previewCache = NSCache<NSString, UIImage>()
+    private static let previewDeadline: TimeInterval = 0.25
 
     var body: some View {
+        ZStack {
+            if let previewImage {
+                Image(uiImage: previewImage)
+                    .resizable()
+                    .scaledToFill()
+                    .transition(.opacity)
+            } else {
+                placeholderCard
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(PlannerTheme.tab)
+                .shadow(color: .black.opacity(0.14), radius: 5, x: 1, y: 2)
+        )
+        .task(id: attachmentId) {
+            loadPreviewIfFast()
+        }
+    }
+
+    private var placeholderCard: some View {
         VStack(spacing: 8) {
             Image(systemName: sfSymbol(for: filename))
                 .font(.system(size: 40))
@@ -97,24 +158,47 @@ struct FileAttachmentCardView: View {
                 .padding(.horizontal, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(PlannerTheme.tab)
-                .shadow(color: .black.opacity(0.14), radius: 5, x: 1, y: 2)
-        )
-        .onTapGesture {
-            openFile()
-        }
-        .background(
-            DocumentInteractionRepresentable(url: $tempURL)
-        )
+        .background(PlannerTheme.tab)
     }
 
-    private func openFile() {
-        let tempDir = FileManager.default.temporaryDirectory
-        let url = tempDir.appendingPathComponent(filename)
-        try? data.write(to: url, options: .atomic)
-        tempURL = url
+    @MainActor
+    private func loadPreviewIfFast() {
+        let cacheKey = attachmentId.uuidString
+        if let cachedImage = Self.previewCache.object(forKey: cacheKey as NSString) {
+            previewImage = cachedImage
+            return
+        }
+
+        previewImage = nil
+        let requestID = UUID()
+        previewRequestID = requestID
+
+        let previewURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("attachment-preview-\(attachmentId.uuidString)-\(filename)")
+        guard (try? data.write(to: previewURL, options: .atomic)) != nil else { return }
+
+        let request = QLThumbnailGenerator.Request(
+            fileAt: previewURL,
+            size: CGSize(width: 600, height: 600),
+            scale: UIScreen.main.scale,
+            representationTypes: .thumbnail
+        )
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.previewDeadline) {
+            guard previewRequestID == requestID,
+                  previewImage == nil else { return }
+            previewRequestID = UUID()
+        }
+
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { thumbnail, _ in
+            guard let image = thumbnail?.uiImage else { return }
+
+            DispatchQueue.main.async {
+                guard previewRequestID == requestID else { return }
+                Self.previewCache.setObject(image, forKey: cacheKey as NSString)
+                previewImage = image
+            }
+        }
     }
 
     private func sfSymbol(for filename: String) -> String {
@@ -151,12 +235,15 @@ private struct DocumentInteractionRepresentable: UIViewControllerRepresentable {
         guard let url = url else { return }
         let controller = UIDocumentInteractionController(url: url)
         controller.delegate = context.coordinator
+        context.coordinator.controller = controller
         DispatchQueue.main.async {
             controller.presentPreview(animated: true)
         }
     }
 
     class Coordinator: NSObject, UIDocumentInteractionControllerDelegate {
+        var controller: UIDocumentInteractionController?
+
         func documentInteractionControllerViewControllerForPreview(
             _ controller: UIDocumentInteractionController
         ) -> UIViewController {

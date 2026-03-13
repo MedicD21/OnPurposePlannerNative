@@ -61,6 +61,48 @@ struct ShapeRecognizer {
         }
     }
 
+    static func previewPath(for shape: RecognizedShape) -> CGPath {
+        let path = CGMutablePath()
+
+        switch shape {
+        case .line(let a, let b):
+            path.move(to: a)
+            path.addLine(to: b)
+
+        case .circle(let center, let radius):
+            path.addEllipse(in: CGRect(
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            ))
+
+        case .rectangle(let x0, let y0, let x1, let y1):
+            path.addRect(CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0))
+
+        case .triangle(let p1, let p2, let p3):
+            path.move(to: p1)
+            path.addLine(to: p2)
+            path.addLine(to: p3)
+            path.closeSubpath()
+        }
+
+        return path
+    }
+
+    static func averageStrokeWidth(_ stroke: PKStroke) -> CGFloat {
+        var sum: CGFloat = 0
+        var count = 0
+
+        for point in stroke.path {
+            sum += max(point.size.width, point.size.height)
+            count += 1
+        }
+
+        guard count > 0 else { return 2 }
+        return sum / CGFloat(count)
+    }
+
     // MARK: - Point collection
 
     private static func collectPoints(_ stroke: PKStroke) -> [CGPoint] {
@@ -182,13 +224,8 @@ struct ShapeRecognizer {
     // MARK: - Stroke builder
 
     private static func stroke(through locs: [CGPoint], template: PKStroke) -> PKStroke {
-        // Average the template's stroke width
-        var sumW: CGFloat = 0, sumH: CGFloat = 0
-        var count = 0
-        for pt in template.path { sumW += pt.size.width; sumH += pt.size.height; count += 1 }
-        let avgSize = count > 0
-            ? CGSize(width: sumW / CGFloat(count), height: sumH / CGFloat(count))
-            : CGSize(width: 2, height: 2)
+        let averageWidth = averageStrokeWidth(template)
+        let avgSize = CGSize(width: averageWidth, height: averageWidth)
 
         let pts = locs.enumerated().map { i, loc in
             PKStrokePoint(

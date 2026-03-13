@@ -5,8 +5,8 @@ import SwiftUI
 struct TabFlagShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
-        let tip: CGFloat = 20  // chevron depth
-        let r:   CGFloat = 8   // left corner radius
+        let tip = max(10, rect.width * 0.12)
+        let r = min(rect.height * 0.24, 8)
 
         p.move(to: CGPoint(x: rect.minX, y: rect.minY + r))
         p.addArc(center: CGPoint(x: rect.minX + r, y: rect.minY + r),
@@ -40,7 +40,7 @@ struct TabMarkerView: View {
                 // Controls bar — floats above the tab when visible
                 if showControls {
                     controlsBar(marker: marker)
-                        .offset(y: -(28))
+                        .offset(y: -(22))
                         .zIndex(10)
                         .transition(.scale(scale: 0.8).combined(with: .opacity))
                 }
@@ -54,13 +54,16 @@ struct TabMarkerView: View {
 
                     // Drawing canvas — pencil writing on the tab
                     DrawingCanvasView(pageId: marker.drawingPageId, store: store)
-                        .frame(width: TabMarker.width - 28, height: TabMarker.height - 8)
-                        .offset(x: -10)
+                        .frame(
+                            width: TabMarker.width * 0.72,
+                            height: TabMarker.height * 0.72
+                        )
+                        .offset(x: -(TabMarker.width * 0.07))
                         .clipShape(Rectangle())
                 }
                 .frame(width: TabMarker.width, height: TabMarker.height)
                 .clipShape(TabFlagShape())
-                .shadow(color: .black.opacity(0.14), radius: 4, x: 1, y: 2)
+                .shadow(color: .black.opacity(0.14), radius: 3, x: 1, y: 2)
                 .onTapGesture {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         showControls.toggle()

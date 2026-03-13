@@ -1,15 +1,23 @@
 import SwiftUI
 import PencilKit
 
+struct MonthCellPosition: Hashable {
+    let row: Int
+    let column: Int
+}
+
 /// Describes the month-calendar grid so the paint-bucket fill can be
-/// restricted to a single day cell.  Nil on non-month canvases.
+/// restricted to a single day cell. Nil on non-month canvases.
 struct MonthFillGrid {
-    let originX:   CGFloat   // left edge of the grid (= horizontal padding)
-    let originY:   CGFloat   // top edge of the first row
-    let cellWidth: CGFloat
-    let cellHeight: CGFloat
-    let columns: Int = 7
-    let rows:    Int = 6
+    let cellFrames: [MonthCellPosition: CGRect]
+
+    func cellRect(containing point: CGPoint) -> CGRect? {
+        cellFrames.values.first { $0.contains(point) }
+    }
+
+    func cellFrame(at position: MonthCellPosition) -> CGRect? {
+        cellFrames[position]
+    }
 }
 
 struct DrawingCanvasView: UIViewRepresentable {
@@ -18,8 +26,16 @@ struct DrawingCanvasView: UIViewRepresentable {
     /// When non-nil, fill is enabled and clamped to the tapped day cell.
     var monthGrid: MonthFillGrid? = nil
 
+    private let monthFillInset: CGFloat = 2
+    private let monthFillOpacity: CGFloat = 0.22
+
     func makeCoordinator() -> Coordinator {
-        Coordinator(pageId: pageId, store: store)
+        Coordinator(
+            pageId: pageId,
+            store: store,
+            fillInset: monthFillInset,
+            fillOpacity: monthFillOpacity
+        )
     }
 
     func makeUIView(context: Context) -> UIView {
@@ -29,13 +45,16 @@ struct DrawingCanvasView: UIViewRepresentable {
 
         // Fill image layer sits below the drawing canvas
         let fillView = UIImageView()
+        fillView.frame = container.bounds
         fillView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         fillView.contentMode      = .scaleToFill
         fillView.backgroundColor  = .clear
+        fillView.isHidden         = monthGrid != nil
         container.addSubview(fillView)
 
         // PencilKit canvas on top
         let canvas = PKCanvasView()
+        canvas.frame = container.bounds
         canvas.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         canvas.drawingPolicy    = .pencilOnly
         canvas.isScrollEnabled  = false
@@ -45,16 +64,28 @@ struct DrawingCanvasView: UIViewRepresentable {
         canvas.delegate         = context.coordinator
         container.addSubview(canvas)
 
+        let previewView = UIView(frame: container.bounds)
+        previewView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        previewView.backgroundColor = .clear
+        previewView.isUserInteractionEnabled = false
+        let previewLayer = CAShapeLayer()
+        previewLayer.frame = previewView.bounds
+        previewLayer.fillColor = UIColor.clear.cgColor
+        previewLayer.strokeColor = UIColor.clear.cgColor
+        previewLayer.lineJoin = .round
+        previewLayer.lineCap = .round
+        previewLayer.opacity = 0
+        previewView.layer.addSublayer(previewLayer)
+        container.addSubview(previewView)
+
         context.coordinator.canvas    = canvas
         context.coordinator.fillView  = fillView
         context.coordinator.monthGrid = monthGrid
+        context.coordinator.previewLayer = previewLayer
 
         fillView.image = store.fillImage(forPageId: pageId)
 
-        store.toolPicker.setVisible(true, forFirstResponder: canvas)
-        store.toolPicker.addObserver(canvas)
-        store.activeCanvas = canvas
-        DispatchQueue.main.async { canvas.becomeFirstResponder() }
+        store.activateCanvas(canvas)
 
         // Tap gesture for paint-bucket fill — only registered when a grid is provided
         if monthGrid != nil {
@@ -69,16 +100,28 @@ struct DrawingCanvasView: UIViewRepresentable {
     }
 
     func updateUIView(_ container: UIView, context: Context) {
-        guard context.coordinator.pageId != pageId else { return }
-        context.coordinator.pageId    = pageId
         context.coordinator.monthGrid = monthGrid
+        context.coordinator.fillView?.isHidden = monthGrid != nil
+        context.coordinator.fillView?.image = store.fillImage(forPageId: pageId)
+        context.coordinator.previewLayer?.frame = container.bounds
+        guard context.coordinator.pageId != pageId else { return }
+        context.coordinator.pageId = pageId
+        context.coordinator.clearStrokeProcessing()
         if let canvas = context.coordinator.canvas {
             canvas.drawing = store.drawing(forPageId: pageId)
-            store.toolPicker.setVisible(true, forFirstResponder: canvas)
-            store.toolPicker.addObserver(canvas)
-            DispatchQueue.main.async { canvas.becomeFirstResponder() }
+            store.activateCanvas(canvas)
         }
-        context.coordinator.fillView?.image = store.fillImage(forPageId: pageId)
+    }
+
+    static func dismantleUIView(_ container: UIView, coordinator: Coordinator) {
+        coordinator.clearStrokeProcessing()
+        if let canvas = coordinator.canvas {
+            coordinator.store.toolPicker.removeObserver(canvas)
+            coordinator.store.unregisterCanvas(canvas)
+        }
+        coordinator.canvas = nil
+        coordinator.fillView = nil
+        coordinator.previewLayer = nil
     }
 
     // MARK: - Coordinator
@@ -89,38 +132,118 @@ struct DrawingCanvasView: UIViewRepresentable {
         var monthGrid: MonthFillGrid?
         weak var canvas:   PKCanvasView?
         weak var fillView: UIImageView?
+        var previewLayer: CAShapeLayer?
+        private let fillInset: CGFloat
+        private let fillOpacity: CGFloat
 
-        private var isApplyingShape = false
-        private var shapeTimer: Timer?
+        private var isApplyingDrawingMutation = false
+        private var processingTimer: Timer?
+        private var shapeCommitTimer: Timer?
 
-        init(pageId: String, store: PlannerStore) {
+        init(pageId: String, store: PlannerStore, fillInset: CGFloat, fillOpacity: CGFloat) {
             self.pageId = pageId
             self.store  = store
+            self.fillInset = fillInset
+            self.fillOpacity = fillOpacity
         }
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             store.saveDrawing(canvasView.drawing, forPageId: pageId)
-            guard !isApplyingShape else { return }
-            shapeTimer?.invalidate()
-            shapeTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: false) { [weak self, weak canvasView] _ in
+            guard !isApplyingDrawingMutation else { return }
+            clearStrokeProcessing()
+            processingTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self, weak canvasView] _ in
                 guard let self, let canvasView else { return }
-                self.tryRecognizeLastStroke(in: canvasView)
+                self.handlePostStrokeProcessing(in: canvasView)
             }
         }
 
-        // MARK: - Shape recognition
+        // MARK: - Post-stroke processing
 
-        private func tryRecognizeLastStroke(in canvas: PKCanvasView) {
-            guard let lastStroke = canvas.drawing.strokes.last,
-                  let shape = ShapeRecognizer.recognize(lastStroke) else { return }
-            let newStrokes = ShapeRecognizer.makeStrokes(shape, template: lastStroke)
+        func clearStrokeProcessing() {
+            processingTimer?.invalidate()
+            processingTimer = nil
+            shapeCommitTimer?.invalidate()
+            shapeCommitTimer = nil
+            hideShapePreview()
+        }
+
+        private func handlePostStrokeProcessing(in canvas: PKCanvasView) {
+            guard !store.fillModeActive,
+                  let lastStroke = canvas.drawing.strokes.last else { return }
+
+            if tryScratchOut(lastStroke, in: canvas) {
+                return
+            }
+
+            guard let shape = ShapeRecognizer.recognize(lastStroke) else { return }
+            showShapePreview(shape, template: lastStroke)
+
+            shapeCommitTimer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: false) { [weak self, weak canvas] _ in
+                guard let self, let canvas else { return }
+                self.commitRecognizedShape(shape, template: lastStroke, in: canvas)
+            }
+        }
+
+        private func tryScratchOut(_ scratchStroke: PKStroke, in canvas: PKCanvasView) -> Bool {
             var drawing = canvas.drawing
+            guard drawing.strokes.count > 1 else { return false }
+
+            let targetIndices = ScratchOutRecognizer.targetStrokeIndices(
+                for: scratchStroke,
+                in: Array(drawing.strokes.dropLast())
+            )
+            guard !targetIndices.isEmpty else { return false }
+
             drawing.strokes.removeLast()
-            drawing.strokes.append(contentsOf: newStrokes)
-            isApplyingShape = true
-            canvas.drawing  = drawing
+            for index in targetIndices.sorted(by: >) {
+                drawing.strokes.remove(at: index)
+            }
+
+            applyDrawingChange(drawing, to: canvas, actionName: "Scratch Out")
+            return true
+        }
+
+        private func commitRecognizedShape(_ shape: RecognizedShape, template: PKStroke, in canvas: PKCanvasView) {
+            hideShapePreview()
+
+            var drawing = canvas.drawing
+            guard !drawing.strokes.isEmpty else { return }
+
+            drawing.strokes.removeLast()
+            drawing.strokes.append(contentsOf: ShapeRecognizer.makeStrokes(shape, template: template))
+            applyDrawingChange(drawing, to: canvas, actionName: "Shape Correction")
+        }
+
+        private func applyDrawingChange(_ drawing: PKDrawing, to canvas: PKCanvasView, actionName: String) {
+            clearStrokeProcessing()
+
+            let previous = canvas.drawing
+            isApplyingDrawingMutation = true
+            canvas.drawing = drawing
             store.saveDrawing(drawing, forPageId: pageId)
-            isApplyingShape = false
+            isApplyingDrawingMutation = false
+
+            canvas.undoManager?.registerUndo(withTarget: self) { [weak canvas] coordinator in
+                guard let canvas else { return }
+                coordinator.applyDrawingChange(previous, to: canvas, actionName: actionName)
+            }
+            canvas.undoManager?.setActionName(actionName)
+        }
+
+        private func showShapePreview(_ shape: RecognizedShape, template: PKStroke) {
+            guard let previewLayer else { return }
+
+            previewLayer.path = ShapeRecognizer.previewPath(for: shape)
+            previewLayer.strokeColor = template.ink.color.withAlphaComponent(0.85).cgColor
+            previewLayer.fillColor = UIColor.clear.cgColor
+            previewLayer.lineWidth = max(1.5, ShapeRecognizer.averageStrokeWidth(template))
+            previewLayer.lineDashPattern = [8, 5]
+            previewLayer.opacity = 1
+        }
+
+        private func hideShapePreview() {
+            previewLayer?.path = nil
+            previewLayer?.opacity = 0
         }
 
         // MARK: - Paint bucket fill
@@ -134,27 +257,13 @@ struct DrawingCanvasView: UIViewRepresentable {
 
             let location = recognizer.location(in: canvas)
 
-            // Determine which day cell was tapped and clamp fill to it
-            let col = Int((location.x - grid.originX) / grid.cellWidth)
-            let row = Int((location.y - grid.originY) / grid.cellHeight)
-            guard col >= 0, col < grid.columns, row >= 0, row < grid.rows else { return }
-            let cellRect = CGRect(
-                x: grid.originX + CGFloat(col) * grid.cellWidth,
-                y: grid.originY + CGFloat(row) * grid.cellHeight,
-                width:  grid.cellWidth,
-                height: grid.cellHeight)
+            guard let cellRect = grid.cellRect(containing: location) else { return }
 
             let drawing  = canvas.drawing
             let existing = fillView.image
             let size     = canvas.bounds.size
 
-            // Use the current ink tool's color
-            let fillColor: UIColor
-            if let inkTool = store.toolPicker.selectedTool as? PKInkingTool {
-                fillColor = inkTool.color
-            } else {
-                fillColor = UIColor(PlannerTheme.defaultPalette[0])
-            }
+            let fillColor = styledFillColor(from: store.lastSelectedInkColor)
 
             DispatchQueue.global(qos: .userInitiated).async { [weak self, weak canvas] in
                 guard let self else { return }
@@ -180,8 +289,12 @@ struct DrawingCanvasView: UIViewRepresentable {
             }
         }
 
+        private func styledFillColor(from color: UIColor) -> UIColor {
+            color.withAlphaComponent(fillOpacity)
+        }
+
         // Only intercept taps when fill mode is active; otherwise let them
-        // fall through to SwiftUI views (e.g. event-dot buttons below the canvas).
+        // fall through to SwiftUI views (e.g. event pill buttons above the canvas).
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             if gestureRecognizer is UITapGestureRecognizer {
                 return store.fillModeActive
@@ -213,13 +326,20 @@ struct DrawingCanvasView: UIViewRepresentable {
                   px >= 0, px < w,
                   py >= 0, py < h else { return nil }
 
-            // Pixel bounds of the day cell — BFS is clamped to this region
-            let clampX0 = max(0, Int(clampRect.minX * scale))
-            let clampY0 = max(0, Int(clampRect.minY * scale))
-            let clampX1 = min(w - 1, Int(ceil(clampRect.maxX * scale)))
-            let clampY1 = min(h - 1, Int(ceil(clampRect.maxY * scale)))
-            guard px >= clampX0, px <= clampX1,
-                  py >= clampY0, py <= clampY1 else { return nil }
+            let fillBounds = clampRect.insetBy(dx: fillInset, dy: fillInset)
+
+            // Pixel bounds of the day cell interior — BFS is clamped to this region
+            let clampX0 = max(0, Int(floor(fillBounds.minX * scale)))
+            let clampY0 = max(0, Int(floor(fillBounds.minY * scale)))
+            let clampX1 = min(w - 1, Int(ceil(fillBounds.maxX * scale)) - 1)
+            let clampY1 = min(h - 1, Int(ceil(fillBounds.maxY * scale)) - 1)
+            guard clampX0 <= clampX1, clampY0 <= clampY1 else { return nil }
+
+            guard px >= max(0, Int(clampRect.minX * scale)),
+                  px <= min(w - 1, Int(ceil(clampRect.maxX * scale)) - 1),
+                  py >= max(0, Int(clampRect.minY * scale)),
+                  py <= min(h - 1, Int(ceil(clampRect.maxY * scale)) - 1)
+            else { return nil }
 
             let bpp = 4
             let bpr = w * bpp
@@ -240,6 +360,9 @@ struct DrawingCanvasView: UIViewRepresentable {
 
             // Bail if tap is on a stroke (alpha > 20 = ink boundary)
             guard detectPx[py * bpr + px * bpp + 3] <= 20 else { return nil }
+
+            let seedX = min(max(px, clampX0), clampX1)
+            let seedY = min(max(py, clampY0), clampY1)
 
             // Output layer: start from existing fill image
             var outputPx = [UInt8](repeating: 0, count: h * bpr)
@@ -263,8 +386,8 @@ struct DrawingCanvasView: UIViewRepresentable {
             var visited = [Bool](repeating: false, count: w * h)
             var queue   = [(Int, Int)]()
             queue.reserveCapacity(min((clampX1 - clampX0) * (clampY1 - clampY0), 256_000))
-            queue.append((px, py))
-            visited[py * w + px] = true
+            queue.append((seedX, seedY))
+            visited[seedY * w + seedX] = true
             var qi = 0
 
             while qi < queue.count {
