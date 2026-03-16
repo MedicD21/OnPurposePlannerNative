@@ -68,9 +68,7 @@ struct MonthPaperView: View {
             )
             .frame(width: paperWidth, height: paperHeight)
 
-            // Invisible hit targets sit above the canvas so the visible pills,
-            // which are laid out inside each day cell, remain tappable.
-            eventTapOverlay
+            monthEventOverlay
                 .allowsHitTesting(!store.fillModeActive)
         }
         .coordinateSpace(name: "monthPaper")
@@ -209,7 +207,6 @@ struct MonthPaperView: View {
     ) -> some View {
         let isToday = isTodayDay(day)
         let dimmed  = !day.isInMonth
-        let events  = eventsForDay(day)
 
         return ZStack(alignment: .topTrailing) {
             // Cell background + right border
@@ -239,13 +236,6 @@ struct MonthPaperView: View {
             }
             .padding(4)
         }
-        .overlay(alignment: .topLeading) {
-            if !events.isEmpty && day.isInMonth {
-                dayEventPills(events, maxWidth: cellWidth - (eventPillSideInset * 2))
-                    .padding(.top, eventPillTopInset)
-                    .padding(.leading, eventPillSideInset)
-            }
-        }
         .background(
             GeometryReader { geo in
                 Color.clear.preference(
@@ -260,9 +250,9 @@ struct MonthPaperView: View {
 
     // MARK: - Event tap overlay
 
-    /// A transparent layer above the canvas with tappable hit targets for
-    /// each visible event pill and the optional "+N more" pill.
-    private var eventTapOverlay: some View {
+    /// Visible event pills rendered above the canvas so finger taps hit the
+    /// actual controls instead of the drawing surface underneath.
+    private var monthEventOverlay: some View {
         return ZStack(alignment: .topLeading) {
             ForEach(Array(calendarMonth.weeks.enumerated()), id: \.offset) { rowIdx, week in
                 ForEach(Array(week.days.enumerated()), id: \.offset) { colIdx, day in
@@ -275,31 +265,37 @@ struct MonthPaperView: View {
                        let frame = monthFillGrid.cellFrame(at: position) {
                         let pillAreaWidth = max(0, frame.width - (eventPillSideInset * 2))
                         ForEach(Array(visibleEvents.enumerated()), id: \.offset) { index, event in
+                            let pillY = frame.minY
+                                + eventPillTopInset
+                                + CGFloat(index) * (eventPillHeight + eventPillSpacing)
                             Button {
                                 selectedEventForDetail = SelectedEventDetail(event: event)
                             } label: {
-                                Color.clear
+                                eventPill(event, maxWidth: pillAreaWidth)
                             }
                             .buttonStyle(.plain)
-                            .frame(width: pillAreaWidth, height: eventPillHeight, alignment: .topLeading)
-                            .offset(
-                                x: frame.minX + eventPillSideInset,
-                                y: frame.minY + eventPillTopInset + CGFloat(index) * (eventPillHeight + eventPillSpacing)
+                            .frame(width: pillAreaWidth, height: eventPillHeight)
+                            .position(
+                                x: frame.minX + eventPillSideInset + (pillAreaWidth / 2),
+                                y: pillY + (eventPillHeight / 2)
                             )
                         }
 
                         if remainingCount > 0 {
+                            let morePillY = frame.minY
+                                + eventPillTopInset
+                                + CGFloat(visibleEvents.count) * (eventPillHeight + eventPillSpacing)
                             Button {
                                 selectedDayEvents = events
                                 showDayEventsSheet = true
                             } label: {
-                                Color.clear
+                                moreEventsPill(remainingCount: remainingCount, maxWidth: pillAreaWidth)
                             }
                             .buttonStyle(.plain)
-                            .frame(width: pillAreaWidth, height: eventPillHeight, alignment: .topLeading)
-                            .offset(
-                                x: frame.minX + eventPillSideInset,
-                                y: frame.minY + eventPillTopInset + CGFloat(visibleEvents.count) * (eventPillHeight + eventPillSpacing)
+                            .frame(width: pillAreaWidth, height: eventPillHeight)
+                            .position(
+                                x: frame.minX + eventPillSideInset + (pillAreaWidth / 2),
+                                y: morePillY + (eventPillHeight / 2)
                             )
                         }
                     }
