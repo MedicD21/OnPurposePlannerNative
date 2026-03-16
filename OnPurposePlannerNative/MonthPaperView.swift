@@ -33,7 +33,8 @@ struct MonthPaperView: View {
     // Calendar events for the displayed month, keyed by "YYYY-MM-DD"
     @State private var monthEvents:      [String: [EKEvent]] = [:]
     @State private var selectedDayEvents: [EKEvent] = []
-    @State private var showEventsSheet = false
+    @State private var showDayEventsSheet = false
+    @State private var selectedEventForDetail: SelectedEventDetail?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -78,8 +79,13 @@ struct MonthPaperView: View {
         }
         .frame(width: paperWidth, height: paperHeight)
         .clipped()
-        .sheet(isPresented: $showEventsSheet) {
-            CalendarEventSheet(events: selectedDayEvents)
+        .sheet(isPresented: $showDayEventsSheet) {
+            CalendarEventSheet(events: selectedDayEvents) { selectedEvent in
+                selectedEventForDetail = SelectedEventDetail(event: selectedEvent)
+            }
+        }
+        .sheet(item: $selectedEventForDetail) { selectedEvent in
+            CalendarEventDetailSheet(event: selectedEvent.event)
         }
         // Load calendar events whenever month/year changes
         .task(id: "\(store.currentYear)-\(store.currentMonth)") {
@@ -254,31 +260,48 @@ struct MonthPaperView: View {
 
     // MARK: - Event tap overlay
 
-    /// A transparent layer above the canvas with tappable hit targets for the
-    /// event pill area in each day cell.
+    /// A transparent layer above the canvas with tappable hit targets for
+    /// each visible event pill and the optional "+N more" pill.
     private var eventTapOverlay: some View {
-        let pillAreaHeight = (eventPillHeight * 3) + (eventPillSpacing * 2)
-
         return ZStack(alignment: .topLeading) {
             ForEach(Array(calendarMonth.weeks.enumerated()), id: \.offset) { rowIdx, week in
                 ForEach(Array(week.days.enumerated()), id: \.offset) { colIdx, day in
                     let events = eventsForDay(day)
+                    let visibleEvents = Array(events.prefix(maxVisibleEventPills))
+                    let remainingCount = max(0, events.count - visibleEvents.count)
                     let position = MonthCellPosition(row: rowIdx, column: colIdx)
                     if !events.isEmpty,
                        day.isInMonth,
                        let frame = monthFillGrid.cellFrame(at: position) {
                         let pillAreaWidth = max(0, frame.width - (eventPillSideInset * 2))
-                        Button {
-                            selectedDayEvents = events
-                            showEventsSheet   = true
-                        } label: {
-                            Color.clear
+                        ForEach(Array(visibleEvents.enumerated()), id: \.offset) { index, event in
+                            Button {
+                                selectedEventForDetail = SelectedEventDetail(event: event)
+                            } label: {
+                                Color.clear
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: pillAreaWidth, height: eventPillHeight, alignment: .topLeading)
+                            .offset(
+                                x: frame.minX + eventPillSideInset,
+                                y: frame.minY + eventPillTopInset + CGFloat(index) * (eventPillHeight + eventPillSpacing)
+                            )
                         }
-                        .buttonStyle(.plain)
-                        .frame(width: pillAreaWidth, height: pillAreaHeight, alignment: .topLeading)
-                        .offset(
-                            x: frame.minX + eventPillSideInset,
-                            y: frame.minY + eventPillTopInset)
+
+                        if remainingCount > 0 {
+                            Button {
+                                selectedDayEvents = events
+                                showDayEventsSheet = true
+                            } label: {
+                                Color.clear
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: pillAreaWidth, height: eventPillHeight, alignment: .topLeading)
+                            .offset(
+                                x: frame.minX + eventPillSideInset,
+                                y: frame.minY + eventPillTopInset + CGFloat(visibleEvents.count) * (eventPillHeight + eventPillSpacing)
+                            )
+                        }
                     }
                 }
             }
@@ -432,35 +455,46 @@ private struct MonthCellFramePreferenceKey: PreferenceKey {
 
 struct CalendarEventSheet: View {
     let events: [EKEvent]
+    var onSelectEvent: ((EKEvent) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationView {
             List {
                 ForEach(events, id: \.eventIdentifier) { event in
-                    HStack(alignment: .top, spacing: 12) {
-                        Circle()
-                            .fill(Color(cgColor: event.calendar.cgColor))
-                            .frame(width: 10, height: 10)
-                            .padding(.top, 4)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(event.title ?? "Untitled")
-                                .font(.body)
-                            if event.isAllDay {
-                                Text("All Day")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text(timeRange(event))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    Button {
+                        onSelectEvent?(event)
+                    } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            Circle()
+                                .fill(Color(cgColor: event.calendar.cgColor))
+                                .frame(width: 10, height: 10)
+                                .padding(.top, 4)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(event.title ?? "Untitled")
+                                    .font(.body)
+                                    .foregroundStyle(PlannerTheme.ink)
+                                if event.isAllDay {
+                                    Text("All Day")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text(timeRange(event))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text(event.calendar.title)
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
                             }
-                            Text(event.calendar.title)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.vertical, 2)
+                    .buttonStyle(.plain)
                 }
             }
             .navigationTitle("Events")
@@ -479,5 +513,96 @@ struct CalendarEventSheet: View {
         fmt.timeStyle = .short
         fmt.dateStyle = .none
         return "\(fmt.string(from: event.startDate)) – \(fmt.string(from: event.endDate))"
+    }
+}
+
+private struct SelectedEventDetail: Identifiable {
+    let event: EKEvent
+    var id: String { event.eventIdentifier ?? UUID().uuidString }
+}
+
+struct CalendarEventDetailSheet: View {
+    let event: EKEvent
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    detailRow(title: "Title", value: readableTitle)
+                    detailRow(title: "Calendar", value: event.calendar.title)
+                    detailRow(title: "When", value: dateTimeText)
+
+                    if let location = event.location?.trimmingCharacters(in: .whitespacesAndNewlines), !location.isEmpty {
+                        detailRow(title: "Location", value: location)
+                    }
+
+                    if let notes = event.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+                        detailRow(title: "Notes", value: notes)
+                    }
+
+                    if let url = event.url?.absoluteString, !url.isEmpty {
+                        detailRow(title: "URL", value: url)
+                    }
+                }
+                .padding(16)
+            }
+            .navigationTitle("Event Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var readableTitle: String {
+        let trimmed = event.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "Untitled" : trimmed
+    }
+
+    private var dateTimeText: String {
+        if event.isAllDay {
+            return allDayRangeText(event)
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return "\(formatter.string(from: event.startDate)) – \(formatter.string(from: event.endDate))"
+    }
+
+    private func allDayRangeText(_ event: EKEvent) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+
+        let calendar = Calendar(identifier: .gregorian)
+        let startDate = event.startDate ?? Date()
+        let safeEndDate = event.endDate ?? startDate
+        let endDate = calendar.date(byAdding: .day, value: -1, to: safeEndDate) ?? safeEndDate
+
+        let startText = formatter.string(from: startDate)
+        let endText = formatter.string(from: endDate)
+
+        if startText == endText {
+            return "All Day • \(startText)"
+        }
+        return "All Day • \(startText) – \(endText)"
+    }
+
+    @ViewBuilder
+    private func detailRow(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.body)
+                .foregroundStyle(PlannerTheme.ink)
+                .textSelection(.enabled)
+        }
     }
 }
