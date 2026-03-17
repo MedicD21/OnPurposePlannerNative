@@ -54,6 +54,7 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
             let scale  = min(scaleX, scaleY)
             scrollView.minimumZoomScale = scale * 0.5
             scrollView.setZoomScale(scale, animated: false)
+            context.coordinator.fitZoomScale = scale
             context.coordinator.centerContent(scrollView)
         }
 
@@ -119,6 +120,7 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
         weak var scrollView:        UIScrollView?
         var hostingController:      UIHostingController<SpreadHostView>?
         var navigationRecognizers: [UISwipeGestureRecognizer] = []
+        var fitZoomScale: CGFloat = 1.0
         weak var noteDragRecognizer: UIPanGestureRecognizer?  // 1-finger note drag
         weak var tabDragRecognizer:    UIPanGestureRecognizer? // 1-finger tab marker drag
         weak var attachmentRecognizer: UIPanGestureRecognizer? // 1-finger attachment move/resize
@@ -310,7 +312,7 @@ struct PlannerSpreadContainerView: UIViewRepresentable {
             let loc = scrollView.convert(gestureRecognizer.location(in: scrollView), to: contentView)
 
             if navigationRecognizers.contains(where: { $0 === gestureRecognizer }) {
-                let isZoomedIn = scrollView.zoomScale > (scrollView.minimumZoomScale * 1.05)
+                let isZoomedIn = scrollView.zoomScale > (fitZoomScale * 1.1)
                 guard !isZoomedIn else { return false }
 
                 let noteHit = store.stickyNotes
