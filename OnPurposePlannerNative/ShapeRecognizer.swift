@@ -219,9 +219,10 @@ struct ShapeRecognizer {
     }
 
     private static func tryCircle(_ pts: [CGPoint]) -> RecognizedShape? {
-        // Reject strokes with multiple sharp corners — those are polygons.
-        // (One stray corner is tolerated for noisy pencil input.)
-        let corners = findCorners(pts, minSharpnessDeg: 35)
+        // Reject strokes with sharp corners (angle < 125°) — those are polygons.
+        // minSharpnessDeg: 55 matches the triangle classifier and avoids false positives
+        // from minor hand wobble, which typically stays above 125°.
+        let corners = findCorners(pts, minSharpnessDeg: 55)
         guard corners.count < 2 else { return nil }
 
         let cx  = pts.map(\.x).reduce(0, +) / CGFloat(pts.count)
@@ -239,9 +240,10 @@ struct ShapeRecognizer {
     }
 
     private static func tryRectangle(_ pts: [CGPoint]) -> RecognizedShape? {
-        // Require 3–6 corners — the defining feature of a polygon vs a circle.
-        // minSharpnessDeg: 35 catches corners ≤ 145°, covering rounded hand-drawn corners.
-        let corners = findCorners(pts, minSharpnessDeg: 35)
+        // Require 3–6 genuine corners (angle < 125°). Using the same threshold as
+        // tryTriangle/tryCircle ensures a consistent definition of "sharp corner"
+        // and prevents wobbly circles from being classified as rectangles.
+        let corners = findCorners(pts, minSharpnessDeg: 55)
         guard corners.count >= 3, corners.count <= 6 else { return nil }
 
         let xs = pts.map(\.x), ys = pts.map(\.y)

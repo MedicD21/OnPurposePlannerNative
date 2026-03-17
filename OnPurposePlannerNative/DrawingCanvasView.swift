@@ -301,10 +301,10 @@ struct DrawingCanvasView: UIViewRepresentable {
                 scheduleLivePreview()
 
             case .changed:
-                recordLivePoint(location)
+                let moved = recordLivePoint(location)
                 if previewedShape != nil {
-                    // Only dismiss the preview when the pencil moves significantly away from
-                    // where it was when the preview appeared — ignore normal hold jitter.
+                    // Dismiss the preview only when the pencil moves significantly away —
+                    // ignore normal hold jitter.
                     let dist = hypot(location.x - previewAnchorLocation.x,
                                      location.y - previewAnchorLocation.y)
                     if dist > 8 {
@@ -313,7 +313,11 @@ struct DrawingCanvasView: UIViewRepresentable {
                         pendingHeldShape = nil
                     }
                 }
-                scheduleLivePreview()
+                // Only reset the hold timer when the pencil actually moves ≥1 pt.
+                // The Pencil fires .changed at 60–120 Hz even when still; calling
+                // scheduleLivePreview() unconditionally would reset the timer every
+                // frame and it would never fire until after the pencil lifts.
+                if moved { scheduleLivePreview() }
 
             case .ended:
                 recordLivePoint(location)
@@ -344,22 +348,25 @@ struct DrawingCanvasView: UIViewRepresentable {
             }
         }
 
-        private func recordLivePoint(_ point: CGPoint) {
+        @discardableResult
+        private func recordLivePoint(_ point: CGPoint) -> Bool {
             guard let last = liveStrokePoints.last else {
                 liveStrokePoints = [point]
-                return
+                return true
             }
-
             if hypot(point.x - last.x, point.y - last.y) >= 1 {
                 liveStrokePoints.append(point)
+                return true
             }
+            return false
         }
 
         private func scheduleLivePreview() {
             livePreviewTimer?.invalidate()
             guard liveStrokePoints.count >= 10 else { return }
-
-            livePreviewTimer = Timer.scheduledTimer(withTimeInterval: 0.16, repeats: false) { [weak self] _ in
+            // 0.4 s of stillness = "held" — the timer fires only when the pencil has
+            // stopped moving for this long, so evaluateLiveShapePreview can skip wasHeld.
+            livePreviewTimer = Timer.scheduledTimer(withTimeInterval: 0.40, repeats: false) { [weak self] _ in
                 self?.evaluateLiveShapePreview()
             }
         }
@@ -370,8 +377,9 @@ struct DrawingCanvasView: UIViewRepresentable {
                   let inkTool = canvas.tool as? PKInkingTool
             else { return }
 
-            guard let shape = ShapeRecognizer.recognize(points: liveStrokePoints, requireHold: true) else {
-                // Hold not detected (still moving) — clear any stale preview
+            // The 0.4s timer already confirmed the pencil was held still —
+            // no need for wasHeld() inside the recognizer.
+            guard let shape = ShapeRecognizer.recognize(points: liveStrokePoints, requireHold: false) else {
                 if previewedShape != nil {
                     hideShapePreview()
                     previewedShape = nil
