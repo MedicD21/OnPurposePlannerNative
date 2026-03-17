@@ -366,11 +366,19 @@ struct DrawingCanvasView: UIViewRepresentable {
 
         private func evaluateLiveShapePreview() {
             guard toolInteractionActive,
-                  previewedShape == nil,          // already showing — don't re-trigger
                   let canvas,
-                  let inkTool = canvas.tool as? PKInkingTool,
-                  let shape = ShapeRecognizer.recognize(points: liveStrokePoints, requireHold: true)
+                  let inkTool = canvas.tool as? PKInkingTool
             else { return }
+
+            guard let shape = ShapeRecognizer.recognize(points: liveStrokePoints, requireHold: true) else {
+                // Hold not detected (still moving) — clear any stale preview
+                if previewedShape != nil {
+                    hideShapePreview()
+                    previewedShape = nil
+                    pendingHeldShape = nil
+                }
+                return
+            }
 
             previewedShape = shape
             pendingHeldShape = shape
@@ -403,22 +411,23 @@ struct DrawingCanvasView: UIViewRepresentable {
             let targetPath = ShapeRecognizer.previewPath(for: shape)
             previewLayer.removeAllAnimations()
             previewLayer.path = targetPath
-            previewLayer.strokeColor = inkColor.cgColor
-            previewLayer.fillColor = ShapeRecognizer.previewFillColor(for: shape, inkColor: inkColor).cgColor
+            // Dashed, semi-transparent preview — mirrors Apple Notes' hold-to-snap style
+            previewLayer.strokeColor = inkColor.withAlphaComponent(0.55).cgColor
+            previewLayer.fillColor = UIColor.clear.cgColor
             previewLayer.lineWidth = lineWidth
-            previewLayer.lineDashPattern = nil
+            previewLayer.lineDashPattern = [NSNumber(value: 8), NSNumber(value: 5)]
             previewLayer.opacity = 1
 
             let morph = CABasicAnimation(keyPath: "path")
             morph.fromValue = fromPath
             morph.toValue = targetPath
-            morph.duration = 0.16
+            morph.duration = 0.18
             morph.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
 
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = previewLayer.presentation()?.opacity ?? 0
             fade.toValue = 1
-            fade.duration = 0.08
+            fade.duration = 0.10
             fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
 
             previewLayer.add(morph, forKey: "shapePreviewMorph")

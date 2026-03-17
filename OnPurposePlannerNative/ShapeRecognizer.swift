@@ -26,11 +26,13 @@ struct ShapeRecognizer {
         guard points.count >= 10 else { return nil }
         guard !requireHold || wasHeld(points) else { return nil }
 
+        // Arrow and line first (open shapes)
         if let s = tryArrow(points)      { return s }
         if let s = tryLine(points)       { return s }
-        if let s = tryCircle(points)     { return s }
+        // Polygons before circle — corners disqualify circle candidates
         if let s = tryRectangle(points)  { return s }
         if let s = tryTriangle(points)   { return s }
+        if let s = tryCircle(points)     { return s }
         return nil
     }
 
@@ -217,13 +219,19 @@ struct ShapeRecognizer {
     }
 
     private static func tryCircle(_ pts: [CGPoint]) -> RecognizedShape? {
+        // Reject strokes with multiple sharp corners — those are polygons.
+        // (One stray corner is tolerated for noisy pencil input.)
+        let corners = findCorners(pts, minSharpnessDeg: 35)
+        guard corners.count < 2 else { return nil }
+
         let cx  = pts.map(\.x).reduce(0, +) / CGFloat(pts.count)
         let cy  = pts.map(\.y).reduce(0, +) / CGFloat(pts.count)
         let rs  = pts.map { hypot($0.x - cx, $0.y - cy) }
         let r   = rs.reduce(0, +) / CGFloat(rs.count)
         guard r > 20 else { return nil }
         let σ   = sqrt(rs.map { pow($0 - r, 2) }.reduce(0, +) / CGFloat(rs.count))
-        guard σ / r < 0.20 else { return nil }
+        // Tighter uniformity threshold — squares can squeak under 0.20
+        guard σ / r < 0.17 else { return nil }
         // Must be roughly closed
         guard let a = pts.first, let b = pts.last,
               hypot(b.x - a.x, b.y - a.y) < r * 0.55 else { return nil }
@@ -231,6 +239,11 @@ struct ShapeRecognizer {
     }
 
     private static func tryRectangle(_ pts: [CGPoint]) -> RecognizedShape? {
+        // Require 3–6 corners — the defining feature of a polygon vs a circle.
+        // minSharpnessDeg: 35 catches corners ≤ 145°, covering rounded hand-drawn corners.
+        let corners = findCorners(pts, minSharpnessDeg: 35)
+        guard corners.count >= 3, corners.count <= 6 else { return nil }
+
         let xs = pts.map(\.x), ys = pts.map(\.y)
         guard let x0 = xs.min(), let x1 = xs.max(),
               let y0 = ys.min(), let y1 = ys.max() else { return nil }
@@ -242,7 +255,7 @@ struct ShapeRecognizer {
             abs(p.x - x0) < tol || abs(p.x - x1) < tol ||
             abs(p.y - y0) < tol || abs(p.y - y1) < tol
         }
-        guard Double(near.count) / Double(pts.count) > 0.78 else { return nil }
+        guard Double(near.count) / Double(pts.count) > 0.75 else { return nil }
         // Must be roughly closed
         guard let a = pts.first, let b = pts.last,
               hypot(b.x - a.x, b.y - a.y) < min(w, h) * 0.35 else { return nil }
