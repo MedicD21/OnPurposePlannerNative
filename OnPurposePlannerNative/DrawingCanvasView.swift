@@ -465,38 +465,99 @@ struct DrawingCanvasView: UIViewRepresentable {
 
             guard let cellRect = grid.cellRect(containing: location) else { return }
 
-            let drawing  = canvas.drawing
             let existing = fillView.image
             let size     = canvas.bounds.size
 
-            let fillColor = styledFillColor(from: store.lastSelectedInkColor)
+            // Eraser tool in fill mode clears the cell; any ink tool fills it.
+            let isErasing = canvas.tool is PKEraserTool
 
-            DispatchQueue.global(qos: .userInitiated).async { [weak self, weak canvas] in
-                guard let self else { return }
-                let result = self.computeFill(
-                    drawing: drawing,
-                    existingFill: existing,
-                    canvasSize: size,
-                    at: location,
-                    color: fillColor,
-                    clampRect: cellRect)
-                DispatchQueue.main.async {
-                    guard let result else { return }
-                    let previous = fillView.image   // capture for undo
-                    fillView.image = result
-                    self.store.saveFillImage(result, forPageId: self.pageId)
-                    // Register with the canvas UndoManager so 3-finger undo works
-                    canvas?.undoManager?.registerUndo(withTarget: self) { [weak fillView] coord in
-                        fillView?.image = previous
-                        coord.store.saveFillImage(previous, forPageId: coord.pageId)
+            if isErasing {
+                DispatchQueue.global(qos: .userInitiated).async { [weak self, weak canvas] in
+                    guard let self else { return }
+                    let result = self.computeClearCell(
+                        existingFill: existing,
+                        canvasSize: size,
+                        clampRect: cellRect)
+                    DispatchQueue.main.async {
+                        guard let result else { return }
+                        let previous = fillView.image
+                        fillView.image = result
+                        self.store.saveFillImage(result, forPageId: self.pageId)
+                        canvas?.undoManager?.registerUndo(withTarget: self) { [weak fillView] coord in
+                            fillView?.image = previous
+                            coord.store.saveFillImage(previous, forPageId: coord.pageId)
+                        }
+                        canvas?.undoManager?.setActionName("Erase Fill")
                     }
-                    canvas?.undoManager?.setActionName("Fill")
+                }
+            } else {
+                let drawing   = canvas.drawing
+                let fillColor = styledFillColor(from: store.lastSelectedInkColor)
+
+                DispatchQueue.global(qos: .userInitiated).async { [weak self, weak canvas] in
+                    guard let self else { return }
+                    let result = self.computeFill(
+                        drawing: drawing,
+                        existingFill: existing,
+                        canvasSize: size,
+                        at: location,
+                        color: fillColor,
+                        clampRect: cellRect)
+                    DispatchQueue.main.async {
+                        guard let result else { return }
+                        let previous = fillView.image
+                        fillView.image = result
+                        self.store.saveFillImage(result, forPageId: self.pageId)
+                        canvas?.undoManager?.registerUndo(withTarget: self) { [weak fillView] coord in
+                            fillView?.image = previous
+                            coord.store.saveFillImage(previous, forPageId: coord.pageId)
+                        }
+                        canvas?.undoManager?.setActionName("Fill")
+                    }
                 }
             }
         }
 
         private func styledFillColor(from color: UIColor) -> UIColor {
             color.withAlphaComponent(fillOpacity)
+        }
+
+        /// Returns a new fill image with the cell at `clampRect` cleared to transparent.
+        private func computeClearCell(
+            existingFill: UIImage?,
+            canvasSize: CGSize,
+            clampRect: CGRect
+        ) -> UIImage? {
+            let scale = UIScreen.main.scale
+            let w = Int(canvasSize.width  * scale)
+            let h = Int(canvasSize.height * scale)
+            guard w > 0, h > 0 else { return nil }
+
+            let cs  = CGColorSpaceCreateDeviceRGB()
+            let bmi = CGImageAlphaInfo.premultipliedLast.rawValue
+
+            guard let ctx = CGContext(
+                data: nil, width: w, height: h,
+                bitsPerComponent: 8,
+                bytesPerRow: w * 4,
+                space: cs,
+                bitmapInfo: bmi
+            ) else { return nil }
+
+            // Draw existing fill, then punch out the cell rect
+            if let existingCG = existingFill?.cgImage {
+                ctx.draw(existingCG, in: CGRect(x: 0, y: 0, width: w, height: h))
+            }
+            let insetRect = clampRect.insetBy(dx: fillInset, dy: fillInset)
+            ctx.clear(CGRect(
+                x: insetRect.minX * scale,
+                y: insetRect.minY * scale,
+                width: insetRect.width  * scale,
+                height: insetRect.height * scale
+            ))
+
+            guard let resultCG = ctx.makeImage() else { return nil }
+            return UIImage(cgImage: resultCG, scale: scale, orientation: .up)
         }
 
         // Only intercept taps when fill mode is active; otherwise let them
