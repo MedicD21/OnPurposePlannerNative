@@ -72,11 +72,11 @@ class PlannerStore: NSObject, ObservableObject, PKToolPickerObserver {
         self.activeSpread = .monthWeek
 
         // Start with the pen selected.
-        toolPicker.selectedTool = PKInkingTool(
-            .pen,
-            color: UIColor(PlannerTheme.defaultPalette[0]),
-            width: 2.0
-        )
+        if #available(iOS 18.0, *) {
+            toolPicker.selectedToolItem = PKToolPickerInkingItem(type: .pen, color: UIColor(PlannerTheme.defaultPalette[0]), width: 2.0)
+        } else {
+            toolPicker.selectedTool = PKInkingTool(.pen, color: UIColor(PlannerTheme.defaultPalette[0]), width: 2.0)
+        }
         lastSelectedInkColor = UIColor(PlannerTheme.defaultPalette[0])
         super.init()
         toolPicker.addObserver(self)
@@ -403,8 +403,13 @@ class PlannerStore: NSObject, ObservableObject, PKToolPickerObserver {
     }
 
     func toolPickerSelectedToolDidChange(_ toolPicker: PKToolPicker) {
-        guard let inkTool = toolPicker.selectedTool as? PKInkingTool else { return }
-        lastSelectedInkColor = inkTool.color
+        if #available(iOS 18.0, *) {
+            guard let inkItem = toolPicker.selectedToolItem as? PKToolPickerInkingItem else { return }
+            lastSelectedInkColor = inkItem.inkingTool.color
+        } else {
+            guard let inkTool = toolPicker.selectedTool as? PKInkingTool else { return }
+            lastSelectedInkColor = inkTool.color
+        }
     }
 
     // MARK: - Attachments Persistence

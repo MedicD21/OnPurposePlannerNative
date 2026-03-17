@@ -253,56 +253,60 @@ struct MonthPaperView: View {
     /// Visible event pills rendered above the canvas so finger taps hit the
     /// actual controls instead of the drawing surface underneath.
     private var monthEventOverlay: some View {
-        return ZStack(alignment: .topLeading) {
+        ZStack(alignment: .topLeading) {
             ForEach(Array(calendarMonth.weeks.enumerated()), id: \.offset) { rowIdx, week in
                 ForEach(Array(week.days.enumerated()), id: \.offset) { colIdx, day in
-                    let events = eventsForDay(day)
-                    let visibleEvents = Array(events.prefix(maxVisibleEventPills))
-                    let remainingCount = max(0, events.count - visibleEvents.count)
-                    let position = MonthCellPosition(row: rowIdx, column: colIdx)
-                    if !events.isEmpty,
-                       day.isInMonth,
-                       let frame = monthFillGrid.cellFrame(at: position) {
-                        let pillAreaWidth = max(0, frame.width - (eventPillSideInset * 2))
-                        ForEach(Array(visibleEvents.enumerated()), id: \.offset) { index, event in
-                            let pillY = frame.minY
-                                + eventPillTopInset
-                                + CGFloat(index) * (eventPillHeight + eventPillSpacing)
-                            Button {
-                                selectedEventForDetail = SelectedEventDetail(event: event)
-                            } label: {
-                                eventPill(event, maxWidth: pillAreaWidth)
-                            }
-                            .buttonStyle(.plain)
-                            .frame(width: pillAreaWidth, height: eventPillHeight)
-                            .position(
-                                x: frame.minX + eventPillSideInset + (pillAreaWidth / 2),
-                                y: pillY + (eventPillHeight / 2)
-                            )
-                        }
-
-                        if remainingCount > 0 {
-                            let morePillY = frame.minY
-                                + eventPillTopInset
-                                + CGFloat(visibleEvents.count) * (eventPillHeight + eventPillSpacing)
-                            Button {
-                                selectedDayEvents = events
-                                showDayEventsSheet = true
-                            } label: {
-                                moreEventsPill(remainingCount: remainingCount, maxWidth: pillAreaWidth)
-                            }
-                            .buttonStyle(.plain)
-                            .frame(width: pillAreaWidth, height: eventPillHeight)
-                            .position(
-                                x: frame.minX + eventPillSideInset + (pillAreaWidth / 2),
-                                y: morePillY + (eventPillHeight / 2)
-                            )
-                        }
-                    }
+                    dayCellEventPills(rowIdx: rowIdx, colIdx: colIdx, day: day)
                 }
             }
         }
         .frame(width: paperWidth, height: paperHeight)
+    }
+
+    @ViewBuilder
+    private func dayCellEventPills(rowIdx: Int, colIdx: Int, day: CalendarDay) -> some View {
+        let events = eventsForDay(day)
+        let visibleEvents = Array(events.prefix(maxVisibleEventPills))
+        let remainingCount = max(0, events.count - visibleEvents.count)
+        let position = MonthCellPosition(row: rowIdx, column: colIdx)
+        if !events.isEmpty,
+           day.isInMonth,
+           let frame = monthFillGrid.cellFrame(at: position) {
+            let pillAreaWidth = max(0, frame.width - (eventPillSideInset * 2))
+            ForEach(Array(visibleEvents.enumerated()), id: \.offset) { index, event in
+                let pillY = frame.minY
+                    + eventPillTopInset
+                    + CGFloat(index) * (eventPillHeight + eventPillSpacing)
+                Button {
+                    selectedEventForDetail = SelectedEventDetail(event: event)
+                } label: {
+                    eventPill(event, maxWidth: pillAreaWidth)
+                }
+                .buttonStyle(.plain)
+                .frame(width: pillAreaWidth, height: eventPillHeight)
+                .position(
+                    x: frame.minX + eventPillSideInset + (pillAreaWidth / 2),
+                    y: pillY + (eventPillHeight / 2)
+                )
+            }
+            if remainingCount > 0 {
+                let morePillY = frame.minY
+                    + eventPillTopInset
+                    + CGFloat(visibleEvents.count) * (eventPillHeight + eventPillSpacing)
+                Button {
+                    selectedDayEvents = events
+                    showDayEventsSheet = true
+                } label: {
+                    moreEventsPill(remainingCount: remainingCount, maxWidth: pillAreaWidth)
+                }
+                .buttonStyle(.plain)
+                .frame(width: pillAreaWidth, height: eventPillHeight)
+                .position(
+                    x: frame.minX + eventPillSideInset + (pillAreaWidth / 2),
+                    y: morePillY + (eventPillHeight / 2)
+                )
+            }
+        }
     }
 
     private var monthFillUnderlay: some View {
