@@ -157,6 +157,12 @@ struct FloatingToolbarView: View {
         }
         .sheet(isPresented: $showDocumentPicker) {
             DocumentPickerView(
+                allowedFileExtensions: [
+                    "pdf", "txt", "rtf", "doc", "docx", "xls", "xlsx",
+                    "ppt", "pptx", "csv", "tsv", "md", "json", "xml",
+                    "jpg", "jpeg", "png", "gif", "heic", "tiff", "webp",
+                    "mp4", "mov", "avi", "mp3", "m4a", "wav", "aac", "zip"
+                ],
                 onPick: { data, filename in
                     let attachment = PageAttachment(
                         pageId: store.currentSpreadId,

@@ -4,12 +4,18 @@ import UniformTypeIdentifiers
 
 struct DocumentPickerView: UIViewControllerRepresentable {
     var allowedContentTypes: [UTType] = [.item]
+    var allowedFileExtensions: Set<String>? = nil
     var maxFileSizeBytes: Int = 25 * 1024 * 1024
     let onPick: (Data, String) -> Void
     var onError: ((String) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(maxFileSizeBytes: maxFileSizeBytes, onPick: onPick, onError: onError)
+        Coordinator(
+            allowedFileExtensions: allowedFileExtensions,
+            maxFileSizeBytes: maxFileSizeBytes,
+            onPick: onPick,
+            onError: onError
+        )
     }
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
@@ -24,15 +30,20 @@ struct DocumentPickerView: UIViewControllerRepresentable {
     // MARK: - Coordinator
 
     class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let allowedFileExtensions: Set<String>?
         let maxFileSizeBytes: Int
         let onPick: (Data, String) -> Void
         let onError: ((String) -> Void)?
 
         init(
+            allowedFileExtensions: Set<String>?,
             maxFileSizeBytes: Int,
             onPick: @escaping (Data, String) -> Void,
             onError: ((String) -> Void)?
         ) {
+            self.allowedFileExtensions = allowedFileExtensions?.map { $0.lowercased() }.reduce(into: Set<String>()) { partialResult, item in
+                partialResult.insert(item)
+            }
             self.maxFileSizeBytes = maxFileSizeBytes
             self.onPick = onPick
             self.onError = onError
@@ -46,6 +57,14 @@ struct DocumentPickerView: UIViewControllerRepresentable {
                 if started {
                     url.stopAccessingSecurityScopedResource()
                 }
+            }
+
+            let ext = url.pathExtension.lowercased()
+            if let allowedFileExtensions, !allowedFileExtensions.contains(ext) {
+                DispatchQueue.main.async {
+                    self.onError?("This file type is not supported here. Please choose a supported format.")
+                }
+                return
             }
 
             let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0

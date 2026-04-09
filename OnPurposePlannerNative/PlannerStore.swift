@@ -458,6 +458,127 @@ class PlannerStore: NSObject, ObservableObject, PKToolPickerObserver {
         saveAttachments()
     }
 
+    // MARK: - Data Integrity
+
+    struct PlannerDataIntegrityReport {
+        let checkedAt: Date
+        let drawingFileCount: Int
+        let fillFileCount: Int
+        let stickyNoteCount: Int
+        let tabMarkerCount: Int
+        let attachmentCount: Int
+        let missingStickyDrawingIDs: [String]
+        let missingTabDrawingIDs: [String]
+        let orphanStickyDrawingIDs: [String]
+        let orphanTabDrawingIDs: [String]
+        let emptyAttachmentIDs: [String]
+        let cleanedOrphanDrawingCount: Int
+
+        var hasIssues: Bool {
+            !missingStickyDrawingIDs.isEmpty ||
+            !missingTabDrawingIDs.isEmpty ||
+            !orphanStickyDrawingIDs.isEmpty ||
+            !orphanTabDrawingIDs.isEmpty ||
+            !emptyAttachmentIDs.isEmpty
+        }
+
+        var summary: String {
+            var lines: [String] = [
+                "Checked \(checkedAt.formatted(date: .abbreviated, time: .shortened))",
+                "Drawings: \(drawingFileCount), Fills: \(fillFileCount), Sticky notes: \(stickyNoteCount), Tab markers: \(tabMarkerCount), Attachments: \(attachmentCount)"
+            ]
+
+            if hasIssues {
+                if !missingStickyDrawingIDs.isEmpty {
+                    lines.append("Missing sticky-note drawings: \(missingStickyDrawingIDs.count)")
+                }
+                if !missingTabDrawingIDs.isEmpty {
+                    lines.append("Missing tab-marker drawings: \(missingTabDrawingIDs.count)")
+                }
+                if !orphanStickyDrawingIDs.isEmpty {
+                    lines.append("Orphan sticky-note drawings: \(orphanStickyDrawingIDs.count)")
+                }
+                if !orphanTabDrawingIDs.isEmpty {
+                    lines.append("Orphan tab-marker drawings: \(orphanTabDrawingIDs.count)")
+                }
+                if !emptyAttachmentIDs.isEmpty {
+                    lines.append("Empty attachments: \(emptyAttachmentIDs.count)")
+                }
+            } else {
+                lines.append("No integrity issues found.")
+            }
+
+            if cleanedOrphanDrawingCount > 0 {
+                lines.append("Cleaned orphan drawing files: \(cleanedOrphanDrawingCount)")
+            }
+
+            return lines.joined(separator: "\n")
+        }
+    }
+
+    func runDataIntegrityCheck(cleanOrphans: Bool = false) -> PlannerDataIntegrityReport {
+        let fm = FileManager.default
+        let drawingFiles = (try? fm.contentsOfDirectory(
+            at: drawingsDirectory,
+            includingPropertiesForKeys: nil
+        ))?.filter { $0.pathExtension == "drawing" } ?? []
+        let fillFiles = (try? fm.contentsOfDirectory(
+            at: fillImagesDirectory,
+            includingPropertiesForKeys: nil
+        ))?.filter { $0.pathExtension == "png" } ?? []
+
+        let drawingIDs = Set(drawingFiles.map { $0.deletingPathExtension().lastPathComponent })
+        let stickyDrawingIDs = Set(stickyNotes.map(\.drawingPageId))
+        let tabDrawingIDs = Set(tabMarkers.map(\.drawingPageId))
+
+        let missingStickyDrawingIDs = stickyDrawingIDs.subtracting(drawingIDs).sorted()
+        let missingTabDrawingIDs = tabDrawingIDs.subtracting(drawingIDs).sorted()
+
+        let orphanStickyDrawingIDs = drawingIDs
+            .filter { $0.hasPrefix("sticky-") && !stickyDrawingIDs.contains($0) }
+            .sorted()
+        let orphanTabDrawingIDs = drawingIDs
+            .filter { $0.hasPrefix("tab-") && !tabDrawingIDs.contains($0) }
+            .sorted()
+
+        let emptyAttachmentIDs = attachments.compactMap { attachment -> String? in
+            switch attachment.kind {
+            case .photo(let data):
+                return data.isEmpty ? attachment.id.uuidString : nil
+            case .file(let data, _):
+                return data.isEmpty ? attachment.id.uuidString : nil
+            }
+        }.sorted()
+
+        var cleaned = 0
+        if cleanOrphans {
+            let staleIDs = orphanStickyDrawingIDs + orphanTabDrawingIDs
+            for staleID in staleIDs {
+                let staleURL = drawingURL(forPageId: staleID)
+                if fm.fileExists(atPath: staleURL.path) {
+                    try? fm.removeItem(at: staleURL)
+                    drawingsCache.removeValue(forKey: staleID)
+                    cleaned += 1
+                }
+            }
+        }
+
+        return PlannerDataIntegrityReport(
+            checkedAt: Date(),
+            drawingFileCount: drawingFiles.count,
+            fillFileCount: fillFiles.count,
+            stickyNoteCount: stickyNotes.count,
+            tabMarkerCount: tabMarkers.count,
+            attachmentCount: attachments.count,
+            missingStickyDrawingIDs: missingStickyDrawingIDs,
+            missingTabDrawingIDs: missingTabDrawingIDs,
+            orphanStickyDrawingIDs: orphanStickyDrawingIDs,
+            orphanTabDrawingIDs: orphanTabDrawingIDs,
+            emptyAttachmentIDs: emptyAttachmentIDs,
+            cleanedOrphanDrawingCount: cleaned
+        )
+    }
+
     // MARK: - Export / Import
 
     struct PlannerExportData: Codable {

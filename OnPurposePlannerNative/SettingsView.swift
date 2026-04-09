@@ -11,6 +11,8 @@ struct SettingsView: View {
     @State private var exportURL:     URL?
     @State private var alertMessage = ""
     @State private var showAlert    = false
+    @State private var integrityMessage = ""
+    @State private var showIntegrityAlert = false
 
     var body: some View {
         NavigationView {
@@ -45,6 +47,23 @@ struct SettingsView: View {
                         showImportPicker = true
                     } label: {
                         Label("Import Data", systemImage: "square.and.arrow.down")
+                            .foregroundStyle(.primary)
+                    }
+                }
+
+                // MARK: Data Health
+                Section("Data Health") {
+                    Button {
+                        runIntegrityCheck(cleanOrphans: false)
+                    } label: {
+                        Label("Run Integrity Check", systemImage: "checklist")
+                            .foregroundStyle(.primary)
+                    }
+
+                    Button {
+                        runIntegrityCheck(cleanOrphans: true)
+                    } label: {
+                        Label("Clean Orphaned Drawings", systemImage: "trash")
                             .foregroundStyle(.primary)
                     }
                 }
@@ -104,6 +123,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showImportPicker) {
             DocumentPickerView(
                 allowedContentTypes: [.json, .item],
+                allowedFileExtensions: ["json"],
                 maxFileSizeBytes: 100 * 1024 * 1024,
                 onPick: { data, _ in
                     importData(data)
@@ -120,6 +140,11 @@ struct SettingsView: View {
             Button("OK") {}
         } message: {
             Text(alertMessage)
+        }
+        .alert("Data Integrity", isPresented: $showIntegrityAlert) {
+            Button("OK") {}
+        } message: {
+            Text(integrityMessage)
         }
     }
 
@@ -242,6 +267,12 @@ struct SettingsView: View {
             alertMessage = "Import failed — the file may be corrupted or from an incompatible version.\n\n\(error.localizedDescription)"
         }
         showAlert = true
+    }
+
+    private func runIntegrityCheck(cleanOrphans: Bool) {
+        let report = store.runDataIntegrityCheck(cleanOrphans: cleanOrphans)
+        integrityMessage = report.summary
+        showIntegrityAlert = true
     }
 }
 
