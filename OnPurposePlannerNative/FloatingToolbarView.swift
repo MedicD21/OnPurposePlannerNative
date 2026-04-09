@@ -13,6 +13,8 @@ struct FloatingToolbarView: View {
     @State private var showImagePicker    = false
     @State private var showDocumentPicker = false
     @State private var showSettings       = false
+    @State private var fileAttachError = ""
+    @State private var showFileAttachError = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -154,20 +156,32 @@ struct FloatingToolbarView: View {
             }
         }
         .sheet(isPresented: $showDocumentPicker) {
-            DocumentPickerView { data, filename in
-                let attachment = PageAttachment(
-                    pageId: store.currentSpreadId,
-                    x: 740, y: 540,
-                    width: 240, height: 160,
-                    kind: .file(data, filename)
-                )
-                store.addAttachment(attachment)
-                showDocumentPicker = false
-            }
+            DocumentPickerView(
+                onPick: { data, filename in
+                    let attachment = PageAttachment(
+                        pageId: store.currentSpreadId,
+                        x: 740, y: 540,
+                        width: 240, height: 160,
+                        kind: .file(data, filename)
+                    )
+                    store.addAttachment(attachment)
+                    showDocumentPicker = false
+                },
+                onError: { message in
+                    fileAttachError = message
+                    showFileAttachError = true
+                    showDocumentPicker = false
+                }
+            )
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(store: store)
                 .environmentObject(settings)
+        }
+        .alert("Attachment Error", isPresented: $showFileAttachError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(fileAttachError)
         }
     }
 

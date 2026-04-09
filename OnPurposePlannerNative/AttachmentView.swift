@@ -233,16 +233,20 @@ private struct DocumentInteractionRepresentable: UIViewControllerRepresentable {
 
     func updateUIViewController(_ vc: UIViewController, context: Context) {
         guard let url = url else { return }
+        if context.coordinator.lastPresentedURL == url { return }
+        context.coordinator.lastPresentedURL = url
         let controller = UIDocumentInteractionController(url: url)
         controller.delegate = context.coordinator
         context.coordinator.controller = controller
         DispatchQueue.main.async {
             controller.presentPreview(animated: true)
+            self.url = nil
         }
     }
 
     class Coordinator: NSObject, UIDocumentInteractionControllerDelegate {
         var controller: UIDocumentInteractionController?
+        var lastPresentedURL: URL?
 
         func documentInteractionControllerViewControllerForPreview(
             _ controller: UIDocumentInteractionController

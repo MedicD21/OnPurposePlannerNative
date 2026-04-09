@@ -96,6 +96,9 @@ struct MonthPaperView: View {
         .onChange(of: store.enabledCalendarIDs) { _, _ in
             Task { await loadMonthEvents() }
         }
+        .onChange(of: store.showAllCalendars) { _, _ in
+            Task { await loadMonthEvents() }
+        }
     }
 
     // MARK: - Header
@@ -426,13 +429,31 @@ struct MonthPaperView: View {
         let events = store.calendarManager.events(
             for: store.currentYear,
             month: store.currentMonth,
-            enabledIDs: store.enabledCalendarIDs)
+            enabledIDs: store.enabledCalendarIDs,
+            showAll: store.showAllCalendars)
         let gc = Calendar(identifier: .gregorian)
         var dict: [String: [EKEvent]] = [:]
         for event in events {
-            let c = gc.dateComponents([.year, .month, .day], from: event.startDate)
-            let key = String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
-            dict[key, default: []].append(event)
+            let startOfDay = gc.startOfDay(for: event.startDate)
+            var endOfDay = gc.startOfDay(for: event.endDate)
+
+            // EventKit all-day events use an exclusive end date.
+            if event.isAllDay {
+                endOfDay = gc.date(byAdding: .day, value: -1, to: endOfDay) ?? endOfDay
+            } else if event.endDate > event.startDate,
+                      gc.startOfDay(for: event.endDate) == event.endDate {
+                // Timed events ending exactly at midnight should not paint the next day.
+                endOfDay = gc.date(byAdding: .day, value: -1, to: endOfDay) ?? endOfDay
+            }
+
+            var cursor = startOfDay
+            while cursor <= endOfDay {
+                let c = gc.dateComponents([.year, .month, .day], from: cursor)
+                let key = String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+                dict[key, default: []].append(event)
+                guard let nextDay = gc.date(byAdding: .day, value: 1, to: cursor) else { break }
+                cursor = nextDay
+            }
         }
         monthEvents = dict.mapValues(sortEvents)
     }

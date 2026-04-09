@@ -25,7 +25,7 @@ class EventKitManager: ObservableObject {
     // MARK: - Events
 
     /// Returns events for the given year/month, filtered to enabledCalendarIDs if non-empty.
-    func events(for year: Int, month: Int, enabledIDs: Set<String>) -> [EKEvent] {
+    func events(for year: Int, month: Int, enabledIDs: Set<String>, showAll: Bool) -> [EKEvent] {
         guard isAuthorized else { return [] }
 
         let cal = Calendar(identifier: .gregorian)
@@ -36,7 +36,7 @@ class EventKitManager: ObservableObject {
         let pred   = ekStore.predicateForEvents(withStart: start, end: end, calendars: nil)
         let all    = ekStore.events(matching: pred)
 
-        if enabledIDs.isEmpty { return all }
+        if showAll { return all }
         return all.filter { enabledIDs.contains($0.calendar.calendarIdentifier) }
     }
 

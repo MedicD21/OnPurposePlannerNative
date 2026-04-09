@@ -102,10 +102,19 @@ struct SettingsView: View {
             }
         }
         .sheet(isPresented: $showImportPicker) {
-            DocumentPickerView { data, _ in
-                importData(data)
-                showImportPicker = false
-            }
+            DocumentPickerView(
+                allowedContentTypes: [.json, .item],
+                maxFileSizeBytes: 100 * 1024 * 1024,
+                onPick: { data, _ in
+                    importData(data)
+                    showImportPicker = false
+                },
+                onError: { message in
+                    alertMessage = message
+                    showAlert = true
+                    showImportPicker = false
+                }
+            )
         }
         .alert("Data Backup", isPresented: $showAlert) {
             Button("OK") {}
@@ -129,7 +138,7 @@ struct SettingsView: View {
             } else {
                 ForEach(calendars, id: \.calendarIdentifier) { cal in
                     let id = cal.calendarIdentifier
-                    let enabled = store.enabledCalendarIDs.isEmpty || store.enabledCalendarIDs.contains(id)
+                    let enabled = store.showAllCalendars || store.enabledCalendarIDs.contains(id)
                     HStack {
                         Circle()
                             .fill(Color(cgColor: cal.cgColor))
@@ -141,22 +150,24 @@ struct SettingsView: View {
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        // If all were shown (empty = all), seed with all IDs first
-                        if store.enabledCalendarIDs.isEmpty {
+                        // If currently in "show all", seed explicit selections first.
+                        if store.showAllCalendars {
                             store.enabledCalendarIDs = Set(calendars.map { $0.calendarIdentifier })
+                            store.showAllCalendars = false
                         }
                         if store.enabledCalendarIDs.contains(id) {
                             store.enabledCalendarIDs.remove(id)
                         } else {
                             store.enabledCalendarIDs.insert(id)
                         }
-                        // Empty set means "show all" — reset if all are selected
+                        // Collapse back to "show all" only when everything is selected.
                         if store.enabledCalendarIDs.count == calendars.count {
+                            store.showAllCalendars = true
                             store.enabledCalendarIDs = []
                         }
                     }
                 }
-                Text("Unchecked calendars are hidden from your planner. All calendars are shown by default.")
+                Text("Unchecked calendars are hidden from your planner. You can now hide all calendars too.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

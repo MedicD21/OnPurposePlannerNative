@@ -54,6 +54,17 @@ class PlannerStore: NSObject, ObservableObject, PKToolPickerObserver {
             UserDefaults.standard.set(Array(enabledCalendarIDs), forKey: "enabledCalendarIDs")
         }
     }
+    @Published var showAllCalendars: Bool = {
+        if UserDefaults.standard.object(forKey: "showAllCalendars") == nil {
+            let savedIDs = UserDefaults.standard.stringArray(forKey: "enabledCalendarIDs") ?? []
+            return savedIDs.isEmpty
+        }
+        return UserDefaults.standard.bool(forKey: "showAllCalendars")
+    }() {
+        didSet {
+            UserDefaults.standard.set(showAllCalendars, forKey: "showAllCalendars")
+        }
+    }
 
     // MARK: - Init
 
@@ -506,23 +517,45 @@ class PlannerStore: NSObject, ObservableObject, PKToolPickerObserver {
         decoder.dateDecodingStrategy = .iso8601
         let export = try decoder.decode(PlannerExportData.self, from: data)
 
-        // Restore drawings
+        // Restore drawings: replace existing files to keep import deterministic.
         let fm = FileManager.default
-        try? fm.createDirectory(at: drawingsDirectory, withIntermediateDirectories: true)
+        try fm.createDirectory(at: drawingsDirectory, withIntermediateDirectories: true)
+        let importedDrawingIDs = Set(export.drawings.keys)
+        let existingDrawingFiles = (try? fm.contentsOfDirectory(
+            at: drawingsDirectory,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        for file in existingDrawingFiles where file.pathExtension == "drawing" {
+            let fileID = file.deletingPathExtension().lastPathComponent
+            if !importedDrawingIDs.contains(fileID) {
+                try? fm.removeItem(at: file)
+            }
+        }
         for (pageId, drawingData) in export.drawings {
             let url = drawingsDirectory.appendingPathComponent("\(pageId).drawing")
-            try? drawingData.write(to: url, options: .atomic)
+            try drawingData.write(to: url, options: .atomic)
         }
         drawingsCache.removeAll()
 
-        // Restore fill images
-        if let fills = export.fills {
-            try? fm.createDirectory(at: fillImagesDirectory, withIntermediateDirectories: true)
-            for (pageId, fillData) in fills {
-                let url = fillImagesDirectory.appendingPathComponent("\(pageId).png")
-                try? fillData.write(to: url, options: .atomic)
+        // Restore fill images: replace existing files. Nil in old exports means no fills.
+        let importedFillMap = export.fills ?? [:]
+        let importedFillIDs = Set(importedFillMap.keys)
+        try fm.createDirectory(at: fillImagesDirectory, withIntermediateDirectories: true)
+        let existingFillFiles = (try? fm.contentsOfDirectory(
+            at: fillImagesDirectory,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        for file in existingFillFiles where file.pathExtension == "png" {
+            let fileID = file.deletingPathExtension().lastPathComponent
+            if !importedFillIDs.contains(fileID) {
+                try? fm.removeItem(at: file)
             }
         }
+        for (pageId, fillData) in importedFillMap {
+            let url = fillImagesDirectory.appendingPathComponent("\(pageId).png")
+            try fillData.write(to: url, options: .atomic)
+        }
+        fillRefreshTick &+= 1
 
         // Restore sticky notes, tab markers, and attachments
         stickyNotes = export.stickyNotes
